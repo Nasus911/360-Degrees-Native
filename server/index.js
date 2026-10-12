@@ -15,7 +15,8 @@ async function readTable(tableName) {
   const { data, error } = await supabase.from(tableName).select('*');
 
   if (error) {
-    "" throw error;
+    console.error(`Error reading table ${tableName}:`, error);
+    throw error;
   }
 
   return data;
