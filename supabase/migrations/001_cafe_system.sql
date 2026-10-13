@@ -1,8 +1,5 @@
 create extension if not exists "pgcrypto";
 
--- Preserve the earlier prototype tables, whose columns are incompatible with
--- the production schema below. The original rows remain available in the
--- legacy_* tables.
 do $$
 begin
   if to_regclass('public.branches') is not null
