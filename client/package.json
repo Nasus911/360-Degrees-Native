@@ -4,7 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
-    "expo": "~57.0.29",
+    "expo": "~57.0.30",
     "expo-camera": "~57.0.6",
     "expo-image-picker": "~57.0.20",
     "expo-status-bar": "~57.0.1",

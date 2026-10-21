@@ -535,12 +535,20 @@ app.post('/api/pos/checkout', async (req, res) => {
     if (!branchId || !Array.isArray(req.body.items) || !req.body.items.length) {
       return res.status(400).json({ error: 'Select a branch and add products before charging.' });
     }
-    const { data, error } = await supabaseAdmin.rpc('process_pos_checkout', {
+    const pickupAt = req.body.pickupAt || null;
+    if (pickupAt && (typeof pickupAt !== 'string' || Number.isNaN(Date.parse(pickupAt)))) {
+      return res.status(400).json({ error: 'Choose a valid pickup time.' });
+    }
+    if (pickupAt && result.profile.role !== 'customer') {
+      return res.status(400).json({ error: 'Scheduled pickup is available for customer orders.' });
+    }
+    const { data, error } = await supabaseAdmin.rpc('process_customized_pos_checkout', {
       p_actor_id: result.user.id,
       p_branch_id: branchId,
       p_customer_code: result.profile.role === 'customer' ? result.profile.customer_code : req.body.customerCode || null,
       p_items: req.body.items,
       p_channel: result.profile.role === 'customer' ? 'online' : 'counter',
+      p_pickup_at: pickupAt,
     });
     if (error) throw error;
     await logActivity(result.user.id, branchId, 'pos.checkout', 'order', data.order.id, { total: data.order.total, promotion: data.promotion?.id, customerId: data.order.customer_id });
@@ -582,11 +590,44 @@ app.post('/api/loyalty/redeem', async (req, res) => {
   }
 });
 
+app.post('/api/loyalty/validate-redemption', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff']);
+    if (!result) return;
+    if (!supabaseAdmin) return res.status(503).json({ error: 'Reward verification requires a server-only service-role key.' });
+    const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+    if (!/^[A-F0-9]{32}$/.test(code)) return res.status(400).json({ error: 'Scan a valid reward redemption QR code.' });
+    const { data: redemption, error: lookupError } = await supabaseAdmin.from('reward_transactions')
+      .select('id,description,redeemed_at')
+      .eq('redemption_code', code)
+      .eq('transaction_type', 'redeemed')
+      .single();
+    if (lookupError || !redemption) return res.status(404).json({ error: 'This reward code is invalid.' });
+    if (redemption.redeemed_at) return res.status(409).json({ error: 'This reward code has already been used.' });
+    const { data, error } = await supabaseAdmin.from('reward_transactions')
+      .update({ redeemed_at: new Date().toISOString() })
+      .eq('id', redemption.id)
+      .is('redeemed_at', null)
+      .select('id,description,redeemed_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(409).json({ error: 'This reward code has already been used.' });
+    await logActivity(result.user.id, result.profile.branch_id, 'loyalty.redemption_verified', 'reward_transaction', data.id);
+    res.json({ description: data.description, redeemedAt: data.redeemed_at });
+  } catch (error) {
+    console.error('Reward verification failure:', error.message);
+    res.status(500).json({ error: error.message || 'Unable to verify reward code.' });
+  }
+});
+
 app.get('/api/orders', async (req, res) => {
   try {
     const result = await requireUser(req, res);
     if (!result) return;
-    let query = (supabaseAdmin || supabase).from('orders').select('*, order_items(*), promotions(title)').order('created_at', { ascending: false });
+    let query = (supabaseAdmin || supabase)
+      .from('orders')
+      .select('*, order_items(*), promotions(title), profiles!orders_customer_id_fkey(full_name,email)')
+      .order('created_at', { ascending: false });
     if (result.profile.role === 'customer') query = query.eq('customer_id', result.user.id);
     else if (!['admin', 'head_admin'].includes(result.profile.role)) query = query.eq('branch_id', result.profile.branch_id);
     else if (req.query.branchId) query = query.eq('branch_id', req.query.branchId);
@@ -603,23 +644,19 @@ app.post('/api/orders', async (req, res) => {
   try {
     const result = await requireUser(req, res, ['customer', 'staff', 'admin']);
     if (!result) return;
-    const { branchId, items } = req.body;
+    if (!supabaseAdmin) return res.status(503).json({ error: 'Order checkout requires a server-only service-role key.' });
+    const { branchId, items, pickupAt } = req.body;
     if (!branchId || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'A branch and at least one item are required.' });
-    const productIds = items.map((item) => item.productId);
-    const { data: products, error: productError } = await supabase.from('products').select('id,name,price').in('id', productIds);
-    if (productError) throw productError;
-    const productMap = new Map(products.map((product) => [product.id, product]));
-    const normalizedItems = items.map((item) => {
-      const product = productMap.get(item.productId);
-      if (!product || !Number.isInteger(item.quantity) || item.quantity < 1) throw new Error('Invalid order item.');
-      return { productId: product.id, productName: product.name, unitPrice: product.price, quantity: item.quantity };
+    const { data, error } = await supabaseAdmin.rpc('process_customized_pos_checkout', {
+      p_actor_id: result.user.id,
+      p_branch_id: branchId,
+      p_customer_code: result.profile.customer_code,
+      p_items: items,
+      p_channel: 'online',
+      p_pickup_at: pickupAt || null,
     });
-    const total = normalizedItems.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
-    const { data: order, error } = await supabase.from('orders').insert({ customer_id: result.user.id, branch_id: branchId, total, channel: 'online' }).select().single();
     if (error) throw error;
-    const { error: itemsError } = await supabase.from('order_items').insert(normalizedItems.map((item) => ({ order_id: order.id, ...item })));
-    if (itemsError) throw itemsError;
-    res.status(201).json({ ...order, items: normalizedItems });
+    res.status(201).json(data);
   } catch (error) {
     console.error('Order creation failure:', error.message);
     res.status(400).json({ error: 'Unable to create order.' });
@@ -636,6 +673,7 @@ app.patch('/api/orders/:id/status', async (req, res) => {
     if (!['admin', 'head_admin'].includes(result.profile.role)) query = query.eq('branch_id', result.profile.branch_id);
     const { data, error } = await query.select().single();
     if (error) throw error;
+    await logActivity(result.user.id, data.branch_id, `order.${req.body.status}`, 'order', data.id);
     res.json(data);
   } catch (error) {
     console.error('Order status failure:', error.message);
@@ -647,7 +685,12 @@ app.get('/api/notifications', async (req, res) => {
   try {
     const result = await requireUser(req, res);
     if (!result) return;
-    const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+    const { data, error } = await (supabaseAdmin || supabase)
+      .from('notifications')
+      .select('*')
+      .eq('user_id', result.user.id)
+      .is('read_at', null)
+      .order('created_at', { ascending: false });
     if (error) throw error;
     res.json(data);
   } catch (error) {

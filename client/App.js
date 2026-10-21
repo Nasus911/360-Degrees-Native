@@ -3,7 +3,9 @@ import {
   Alert,
   Animated,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -55,6 +57,32 @@ const initialOrders = [
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+const orderStatusLabels = {
+  new: 'New',
+  preparing: 'Preparing',
+  ready_for_pickup: 'Ready for pickup',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+const statusToApi = Object.fromEntries(Object.entries(orderStatusLabels).map(([value, label]) => [label, value]));
+const toClientOrder = (order, user) => ({
+  ...order,
+  databaseId: order.id,
+  id: order.order_number ? `SC-${order.order_number}` : order.id,
+  customer: order.profiles?.full_name || (order.customer_id ? 'Customer' : 'Walk-in'),
+  customerEmail: order.profiles?.email || (order.customer_id === user?.id ? user.email : ''),
+  status: orderStatusLabels[order.status] || order.status,
+  channel: order.channel === 'online' ? 'Online' : 'Counter',
+  items: (order.order_items || []).map((item) => {
+    const customization = item.customization || {};
+    const details = customization.size
+      ? `${customization.size === 'large' ? 'Large' : 'Regular'}, ${customization.milk === 'oat' ? 'Oat milk' : 'Dairy'}, ${customization.sweetness ?? 100}% sweetness${customization.extraEspresso ? ', extra espresso' : ''}`
+      : '';
+    return `${item.product_name} × ${item.quantity}${details ? ` (${details})` : ''}`;
+  }).join(', '),
+  total: Number(order.total),
+  promotionTitle: order.promotions?.title || '',
+});
 const toProduct = (product) => ({
   ...product,
   price: Number(product.price),
@@ -105,7 +133,9 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState('');
   const [orders, setOrders] = useState(initialOrders);
+  const [notifications, setNotifications] = useState([]);
   const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
@@ -118,6 +148,29 @@ export default function App() {
   const branchProducts = useMemo(() => catalogProducts.filter((product) => product.category !== 'Inventory'
     && (!product.branch_id || !activeBranchId || product.branch_id === activeBranchId)), [activeBranchId, catalogProducts]);
   const visibleProducts = useMemo(() => branchProducts.filter((product) => product.name.toLowerCase().includes(search.toLowerCase())), [branchProducts, search]);
+
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let active = true;
+    setOrders([]);
+    setNotifications([]);
+    const refreshOrders = async () => {
+      try {
+        const [loadedOrders, loadedNotifications] = await Promise.all([
+          requestApi(`/api/orders${isHeadAdmin && activeBranchId ? `?branchId=${encodeURIComponent(activeBranchId)}` : ''}`),
+          role === 'customer' ? requestApi('/api/notifications') : Promise.resolve(null),
+        ]);
+        if (!active) return;
+        setOrders(loadedOrders.map((order) => toClientOrder(order, user)));
+        if (loadedNotifications) setNotifications(loadedNotifications);
+      } catch (error) {
+        if (active) console.error('Order and notification refresh failure:', error.message);
+      }
+    };
+    refreshOrders();
+    const timer = setInterval(refreshOrders, 12000);
+    return () => { active = false; clearInterval(timer); };
+  }, [activeBranchId, isHeadAdmin, role, user]);
 
   useEffect(() => {
     if (!supabase || !user) return;
@@ -303,13 +356,29 @@ export default function App() {
     }} />;
   }
 
-  const addToCart = (product) => setCart((current) => {
-    const existing = current.find((line) => line.id === product.id);
-    return existing ? current.map((line) => (line.id === product.id ? { ...line, quantity: line.quantity + 1 } : line)) : [...current, { ...product, quantity: 1 }];
+  const addToCart = (product, customization = { size: 'regular', milk: 'dairy', sweetness: 100, extraEspresso: false }) => setCart((current) => {
+    const priceAdjustment = (customization.size === 'large' ? 50 : 0)
+      + (customization.milk === 'oat' ? 35 : 0)
+      + (customization.extraEspresso ? 50 : 0);
+    const customizationKey = JSON.stringify(customization);
+    const id = `${product.id}:${customizationKey}`;
+    const existing = current.find((line) => line.id === id);
+    const item = {
+      ...product,
+      id,
+      productId: product.id,
+      price: Number(product.price) + priceAdjustment,
+      quantity: 1,
+      customization,
+      priceAdjustment,
+    };
+    return existing
+      ? current.map((line) => (line.id === id ? { ...line, quantity: line.quantity + 1 } : line))
+      : [...current, item];
   });
   const signOut = async () => {
     if (supabase) await supabase.auth.signOut();
-    setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch('');
+    setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch(''); setNotifications([]); setOrders(supabase ? [] : initialOrders);
   };
   const saveAccountProfile = async ({ fullName, contactNumber, address }) => {
     if (supabase) {
@@ -486,53 +555,117 @@ export default function App() {
   const placePosOrder = async (customerCode) => {
     if (!cart.length) return;
     setCheckoutNotice('');
+    setCheckoutError('');
     if (supabase) {
-      const result = await requestApi('/api/pos/checkout', {
-        method: 'POST',
-        body: JSON.stringify({ branchId: activeBranchId || user.branchId, customerCode, items: cart.map((item) => ({ productId: item.id, quantity: item.quantity })) }),
-      });
-      setOrders((current) => [{ ...result.order, id: result.order.id, customer: customerCode || 'Walk-in', items: result.items.map((item) => `${item.product_name} × ${item.quantity}`).join(', '), promotionTitle: result.promotion?.title, status: 'New' }, ...current]);
+      let result;
+      try {
+        result = await requestApi('/api/pos/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ branchId: activeBranchId || user.branchId, customerCode, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
+        });
+      } catch (error) {
+        setCheckoutError(error.message || 'Unable to complete checkout.');
+        return;
+      }
+      setOrders((current) => [toClientOrder({
+        ...result.order,
+        order_items: result.items,
+        promotions: { title: result.promotion?.title },
+      }, user), ...current]);
       setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} loyalty points earned.` : 'Sale completed.'}`);
       setCart([]);
       return result;
     }
     const preview = previewPromotion(cart, promotions, activeBranchId);
-    setOrders((current) => [{ id: `SC-${1847 + current.length}`, customer: customerCode || 'Walk-in', items: preview.items.map((item) => `${item.name} × ${item.quantity}`).join(', '), total: preview.total, status: 'New' }, ...current]);
+    const orderId = `SC-${1847 + orders.length}`;
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    setOrders((current) => [{
+      id: orderId,
+      customer: customerCode || 'Walk-in',
+      items: preview.items.map((item) => `${item.name} × ${item.quantity}`).join(', '),
+      total: Math.max(0, subtotal - preview.discountTotal),
+      status: 'New',
+      channel: 'Counter',
+      estimated_pickup_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    }, ...current]);
     setCheckoutNotice(`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`);
     setCart([]);
   };
-  const placeOrder = async () => {
+  const placeOrder = async (pickupAt = null) => {
     if (!cart.length) return;
+    setCheckoutNotice('');
+    setCheckoutError('');
     if (supabase) {
       const branchId = activeBranchId || user.branchId || branches[0]?.id;
       if (!branchId) return setCheckoutNotice('Choose an active branch before placing your order.');
       try {
         const result = await requestApi('/api/pos/checkout', {
           method: 'POST',
-          body: JSON.stringify({ branchId, customerCode: user.customerCode, items: cart.map((item) => ({ productId: item.id, quantity: item.quantity })) }),
+          body: JSON.stringify({ branchId, pickupAt, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
         });
-        setOrders((current) => [{ ...result.order, items: result.items.map((item) => `${item.product_name} × ${item.quantity}`).join(', '), customer: user.name, customerEmail: user.email, promotionTitle: result.promotion?.title, status: 'New' }, ...current]);
+        setOrders((current) => [toClientOrder({
+          ...result.order,
+          order_items: result.items,
+          promotions: { title: result.promotion?.title },
+        }, user), ...current]);
         setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : 'Order placed.'}`);
         setCart([]);
-      } catch (orderError) { setCheckoutNotice(orderError.message || 'Unable to place order.'); }
+      } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
       return;
     }
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const order = {
       id: `SC-${1847 + orders.length}`,
       customer: user.name,
       customerEmail: user.email,
       items: cart.map((item) => `${item.name} × ${item.quantity}`).join(', '),
-      total: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      total: subtotal,
       status: 'New',
       channel: 'Online',
+      scheduled_pickup_at: pickupAt,
+      estimated_pickup_at: pickupAt || new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     };
     setOrders((current) => [order, ...current]);
     setCart([]);
     Alert.alert('Order placed', 'Your pickup order is being prepared.');
   };
-  const updateOrderStatus = (orderId, status) => {
-    setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status } : order));
-    if (status === 'Ready for pickup') Alert.alert('Customer notified', 'The customer can now see that the order is ready for pickup.');
+  const updateOrderStatus = async (orderId, status) => {
+    const order = orders.find((current) => current.id === orderId);
+    if (!order) return;
+    try {
+      const updated = supabase
+        ? await requestApi(`/api/orders/${order.databaseId || order.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: statusToApi[status] || status }),
+        })
+        : { status: statusToApi[status] || status };
+      setOrders((current) => current.map((item) => item.id === orderId
+        ? { ...item, status: orderStatusLabels[updated.status] || updated.status }
+        : item));
+      if (status === 'Ready for pickup') {
+        setNotifications((current) => [{
+          id: `${orderId}-ready`,
+          title: 'Your order is ready for pickup',
+          message: `Order #${orderId} is ready for pickup.`,
+          created_at: new Date().toISOString(),
+        }, ...current]);
+      }
+    } catch (error) {
+      Alert.alert('Unable to update order', error.message || 'Please try again.');
+    }
+  };
+  const dismissNotification = async (notificationId) => {
+    if (supabase) {
+      const { error } = await supabase.from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', notificationId)
+        .eq('user_id', user.id);
+      if (error) {
+        Alert.alert('Unable to dismiss notification', error.message);
+        return;
+      }
+    }
+    setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
   };
   const navigate = (nextPage) => {
     const allowedPage = config.pages.some(([id]) => id === nextPage) ? nextPage : config.initialPage;
@@ -568,11 +701,11 @@ export default function App() {
               const updated = supabase ? await requestApi(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !account.isActive }) }) : { ...account, isActive: !account.isActive };
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
-            {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
+            {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
             {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} />}
             {page === 'receipts' && <Receipts orders={orders} />}
-            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} user={user} orders={orders} onNavigate={navigate} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} />}
-            {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} />}
+            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} />}
+            {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
             {page === 'orders' && <Orders orders={orders} user={user} />}
             {page === 'wallet' && <Wallet user={user} onRedeem={redeemReward} />}
             {page === 'account' && <ManageAccount user={user} onSaveProfile={saveAccountProfile} onChangePassword={changeAccountPassword} />}
@@ -594,6 +727,8 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const passwordRef = useRef(null);
+  const { width } = useWindowDimensions();
 
   const submit = () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -613,8 +748,9 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
 
   const switchMode = () => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); };
   return <SafeAreaView style={styles.authSafeArea}>
-    <ScrollView contentContainerStyle={styles.authPage}>
-      <View style={styles.authCard}>
+    <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView contentContainerStyle={[styles.authPage, width < 480 && styles.authPageCompact]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <View style={[styles.authCard, width < 480 && styles.authCardCompact]}>
         <View style={styles.authBrand}>
           <Text style={styles.brandMark}>360</Text>
           <View>
@@ -631,12 +767,12 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
           </Pressable>
         </View>
         <Text style={styles.eyebrow}>{mode === 'login' ? 'Welcome back' : 'Join 360 rewards'}</Text>
-        <Text style={styles.authTitle}>{mode === 'login' ? 'Sign in to your workspace' : 'Create your account'}</Text>
-        <Text style={styles.authSubtitle}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : 'New accounts start as customer accounts.'}</Text>
+        <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : 'Create your account'}</Text>
+        <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : 'New accounts start as customer accounts.'}</Text>
         {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" autoCapitalize="words" style={styles.authInput} />}
-        <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" style={styles.authInput} />
+        <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />
         {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />}
-        <PasswordInput value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} />
+        <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />
         {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
         {authError ? <Text style={styles.formError}>{authError}</Text> : null}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
@@ -646,11 +782,12 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
         {mode === 'login' && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   </SafeAreaView>;
 }
 
-function PasswordInput({ value, onChangeText, placeholder, visible, onToggle }) {
-  return <View style={styles.passwordInputWrapper}><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} secureTextEntry={!visible} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
+function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
+  return <View style={styles.passwordInputWrapper}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
 }
 
 function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranchId, onCreate, onToggleAccount }) {
@@ -1052,11 +1189,43 @@ function Inventory({ branchId, isHeadAdmin }) {
     <View style={styles.card}><Text style={styles.cardTitle}>Recent stock movement</Text>{movements.length ? movements.slice(0, 30).map((movement) => <View style={styles.accountRow} key={movement.id}><View style={styles.flex}><Text style={styles.cardTitle}>{movement.inventory?.name || 'Stock item'} · {movement.movement_type.replaceAll('_', ' ')}</Text><Text style={styles.subtitle}>{movement.branches?.name || 'Branch'} · {new Date(movement.created_at).toLocaleString()}</Text></View><Text style={movement.quantity_delta > 0 ? styles.price : styles.warning}>{movement.quantity_delta > 0 ? '+' : ''}{movement.quantity_delta}</Text></View>) : <Text style={styles.subtitle}>Stock activity will appear here.</Text>}</View>
   </>;
 }
-function Products({ visibleProducts, search, setSearch, onAdd, cart = [], onChangeQuantity, onPlaceOrder }) {
-  return <><Header eyebrow="Catalog management" title="Products" subtitle="Items available to customers and the POS." /><TextInput value={search} onChangeText={setSearch} placeholder="Search coffee, matcha, pastry, or SKU" style={styles.input} /><View style={styles.productGrid}>{visibleProducts.map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View>{onChangeQuantity && <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} />}</>;
+function Products({ visibleProducts, search, setSearch, onAdd, cart = [], onChangeQuantity, onPlaceOrder, checkoutNotice, checkoutError }) {
+  return <><Header eyebrow="Catalog management" title="Products" subtitle="Items available to customers and the POS." /><TextInput value={search} onChangeText={setSearch} placeholder="Search coffee, matcha, pastry, or SKU" style={styles.input} /><View style={styles.productGrid}>{visibleProducts.map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View>{onChangeQuantity && <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} schedulePickup />}{checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}{checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}</>;
 }
 function ProductCard({ product, onAdd, onDelete }) {
-  return <View style={styles.productCard}>{product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" accessibilityLabel={`${product.name} product photo`} /> : <Text style={styles.productEmoji}>{product.emoji}</Text>}<Text style={styles.eyebrow}>{product.category}</Text><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.subtitle}>{product.description}</Text><View style={styles.cardFooter}><Text style={styles.price}>{money(product.price)}</Text>{onAdd && <Pressable style={styles.button} onPress={() => onAdd(product)}><Text style={styles.buttonText}>Add to order</Text></Pressable>}{onDelete && <Pressable style={styles.deleteButton} onPress={() => onDelete(product)}><Text style={styles.deleteButtonText}>Delete</Text></Pressable>}</View></View>;
+  const isDrink = ['coffee', 'cold', 'matcha'].includes(String(product.category).toLowerCase());
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [size, setSize] = useState('regular');
+  const [milk, setMilk] = useState('dairy');
+  const [sweetness, setSweetness] = useState(100);
+  const [extraEspresso, setExtraEspresso] = useState(false);
+  const adjustment = (size === 'large' ? 50 : 0) + (milk === 'oat' ? 35 : 0) + (extraEspresso ? 50 : 0);
+  const add = () => {
+    onAdd(product, { size, milk, sweetness, extraEspresso });
+    setCustomizeOpen(false);
+  };
+  return <>
+    <View style={styles.productCard}>{product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" accessibilityLabel={`${product.name} product photo`} /> : <Text style={styles.productEmoji}>{product.emoji}</Text>}<Text style={styles.eyebrow}>{product.category}</Text><Text style={styles.cardTitle}>{product.name}</Text><Text style={styles.subtitle}>{product.description}</Text><View style={styles.cardFooter}><Text style={styles.price}>{money(product.price)}</Text>{onAdd && <Pressable style={styles.button} onPress={() => (isDrink ? setCustomizeOpen(true) : onAdd(product))}><Text style={styles.buttonText}>{isDrink ? 'Customize' : 'Add to order'}</Text></Pressable>}{onDelete && <Pressable style={styles.deleteButton} onPress={() => onDelete(product)}><Text style={styles.deleteButtonText}>Delete</Text></Pressable>}</View></View>
+    <Modal visible={customizeOpen} transparent animationType="slide" onRequestClose={() => setCustomizeOpen(false)}>
+      <View style={styles.scannerBackdrop}><View style={styles.customizeSheet}>
+        <Text style={styles.cardTitle}>Customize {product.name}</Text>
+        <Text style={styles.fieldLabel}>Size</Text>
+        <View style={styles.optionRow}><OptionChoice label="Regular · included" selected={size === 'regular'} onPress={() => setSize('regular')} /><OptionChoice label="Large · +₱50" selected={size === 'large'} onPress={() => setSize('large')} /></View>
+        <Text style={styles.fieldLabel}>Milk</Text>
+        <View style={styles.optionRow}><OptionChoice label="Dairy · included" selected={milk === 'dairy'} onPress={() => setMilk('dairy')} /><OptionChoice label="Oat · +₱35" selected={milk === 'oat'} onPress={() => setMilk('oat')} /></View>
+        <Text style={styles.fieldLabel}>Sweetness</Text>
+        <View style={styles.optionRow}>{[0, 25, 50, 75, 100].map((value) => <OptionChoice key={value} label={`${value}%`} selected={sweetness === value} onPress={() => setSweetness(value)} />)}</View>
+        <Text style={styles.fieldLabel}>Extra espresso · +₱50</Text>
+        <View style={styles.optionRow}><OptionChoice label="No" selected={!extraEspresso} onPress={() => setExtraEspresso(false)} /><OptionChoice label="Add shot" selected={extraEspresso} onPress={() => setExtraEspresso(true)} /></View>
+        <Text style={styles.total}>Price: {money(Number(product.price) + adjustment)}</Text>
+        <View style={styles.confirmActions}><Pressable style={styles.confirmCancelButton} onPress={() => setCustomizeOpen(false)}><Text style={styles.confirmCancelText}>Cancel</Text></Pressable><Pressable style={styles.button} onPress={add}><Text style={styles.buttonText}>Add to order</Text></Pressable></View>
+      </View></View>
+    </Modal>
+  </>;
+}
+
+function OptionChoice({ label, selected, onPress }) {
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.optionChoice, selected && styles.optionChoiceSelected]}><Text style={[styles.optionChoiceText, selected && styles.optionChoiceTextSelected]}>{label}</Text></Pressable>;
 }
 
 function AdminProducts({ products, branches, defaultBranchId, isHeadAdmin, onCreateProduct, onDeleteProduct }) {
@@ -1294,9 +1463,10 @@ function DeleteConfirmation({ itemName, saving, onCancel, onConfirm }) {
 }
 function previewPromotion(cart, promotions, branchId) {
   const now = Date.now();
+  const productId = (item) => item.productId || item.id;
   const matchesProduct = (promotion, item) => promotion.eligibleProductIds?.length
-    ? promotion.eligibleProductIds.includes(item.id)
-    : !promotion.productId || promotion.productId === item.id;
+    ? promotion.eligibleProductIds.includes(productId(item))
+    : !promotion.productId || promotion.productId === productId(item);
   const promotion = promotions.find((item) => item.is_active !== false
     && (!item.branchIds?.length || !branchId || item.branchIds.includes(branchId))
     && (!item.starts_at || new Date(item.starts_at).getTime() <= now)
@@ -1305,13 +1475,13 @@ function previewPromotion(cart, promotions, branchId) {
   const items = cart.map((item) => ({ ...item }));
   if (!promotion || !items.length) return { items, discountTotal: 0, promotion: null };
   const eligibleItems = items.filter((item) => matchesProduct(promotion, item));
-  const eligibleSubtotal = eligibleItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const eligibleSubtotal = eligibleItems.reduce((sum, item) => sum + (item.price - (item.priceAdjustment || 0)) * item.quantity, 0);
   if (!eligibleItems.length) return { items, discountTotal: 0, promotion: null };
   let discountTotal = 0;
   if (promotion.promoType === 'buy_x_get_y') {
     const quantity = eligibleItems.reduce((sum, item) => sum + item.quantity, 0);
     const freeQuantity = Math.floor(quantity / promotion.buyQuantity) * promotion.getQuantity;
-    const freeItem = items.find((item) => item.id === promotion.freeProductId)
+    const freeItem = items.find((item) => productId(item) === promotion.freeProductId)
       || eligibleItems[0];
     if (freeQuantity > 0 && freeItem) items.push({ ...freeItem, id: `promo-${promotion.id}`, name: `${freeItem.name} (Promo)`, price: 0, quantity: freeQuantity, isPromo: true, promoLabel: `Free via ${promotion.title}` });
   } else if (promotion.promoType === 'percentage') {
@@ -1322,12 +1492,14 @@ function previewPromotion(cart, promotions, branchId) {
   return { items, discountTotal, promotion };
 }
 
-function Pos({ visibleProducts, promotions, branchId, checkoutNotice, search, setSearch, cart, onAdd, onPlaceOrder, onChangeQuantity }) {
+function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutError, search, setSearch, cart, onAdd, onPlaceOrder, onChangeQuantity }) {
   const [customerCode, setCustomerCode] = useState('');
   const [customerInfo, setCustomerInfo] = useState(null);
   const [customerLookupError, setCustomerLookupError] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [redemptionNotice, setRedemptionNotice] = useState('');
+  const scanHandled = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const preview = previewPromotion(cart, promotions, branchId);
   const lookupCustomer = async (code = customerCode) => {
@@ -1345,11 +1517,37 @@ function Pos({ visibleProducts, promotions, branchId, checkoutNotice, search, se
   };
   const openScanner = async () => {
     setScanError('');
+    setRedemptionNotice('');
+    scanHandled.current = false;
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) return setScanError('Camera access is needed to scan customer QR codes.');
     }
     setScanOpen(true);
+  };
+  const handleScannedCode = async (rawCode) => {
+    if (scanHandled.current) return;
+    scanHandled.current = true;
+    const code = rawCode.trim();
+    setScanOpen(false);
+    if (/^CS-/i.test(code)) {
+      setCustomerCode(code);
+      await lookupCustomer(code);
+      return;
+    }
+    if (!supabase) {
+      setScanError('Reward code verification requires a connected account.');
+      return;
+    }
+    try {
+      const result = await requestApi('/api/loyalty/validate-redemption', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      setRedemptionNotice(`${result.description} · Reward verified and marked used.`);
+    } catch (verificationError) {
+      setScanError(verificationError.message || 'Unable to verify reward code.');
+    }
   };
   return <>
     <Header eyebrow="Service choreography" title="Point of sale" subtitle="Promotions apply automatically at checkout." />
@@ -1357,17 +1555,43 @@ function Pos({ visibleProducts, promotions, branchId, checkoutNotice, search, se
     <View style={styles.productGrid}>{visibleProducts.slice(0, 6).map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View>
     <CartPanel cart={preview.items} discountTotal={preview.discountTotal} promotionLabel={preview.promotion?.title} onChangeQuantity={onChangeQuantity} onPlaceOrder={() => onPlaceOrder(customerCode.trim())} onScanCustomer={openScanner} onCustomerLookup={() => lookupCustomer()} customerInfo={customerInfo} customerLookupError={customerLookupError} buttonLabel="Charge" customerCode={customerCode} setCustomerCode={setCustomerCode} />
     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
+    {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
+    {redemptionNotice ? <Text style={styles.successText}>{redemptionNotice}</Text> : null}
     {scanError ? <Text style={styles.formError}>{scanError}</Text> : null}
     <Modal visible={scanOpen} transparent animationType="slide" onRequestClose={() => setScanOpen(false)}>
       <View style={styles.scannerBackdrop}><View style={styles.scannerSheet}>
         <Text style={styles.cardTitle}>Scan customer QR</Text>
-        <CameraView style={styles.scanCamera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => { const code = data.trim(); setCustomerCode(code); setScanOpen(false); lookupCustomer(code); }} />
+        <CameraView style={styles.scanCamera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => handleScannedCode(data)} />
         <Pressable style={styles.buttonSecondary} onPress={() => setScanOpen(false)}><Text>Cancel</Text></Pressable>
       </View></View>
     </Modal>
   </>;
 }
-function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError }) {
+function createPickupSlots() {
+  const interval = 15 * 60 * 1000;
+  const now = Date.now();
+  const firstSlot = Math.ceil((now + 60 * 1000) / interval) * interval;
+  const lastSlot = now + 2 * 60 * 60 * 1000;
+  const slots = [];
+  for (let timestamp = firstSlot; timestamp <= lastSlot; timestamp += interval) {
+    slots.push({
+      value: new Date(timestamp).toISOString(),
+      label: new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    });
+  }
+  return slots;
+}
+
+function pickupLabel(order) {
+  const pickupAt = order.scheduled_pickup_at || order.estimated_pickup_at;
+  if (!pickupAt) return '';
+  const time = new Date(pickupAt);
+  return `${order.scheduled_pickup_at ? 'Scheduled pickup' : 'Estimated pickup'} · ${time.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError, schedulePickup = false }) {
+  const [pickupAt, setPickupAt] = useState('');
+  const pickupSlots = createPickupSlots();
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = Math.max(0, subtotal - discountTotal);
   return <View style={styles.card}>
@@ -1376,18 +1600,43 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
     {customerInfo && <Text style={styles.successText}>{customerInfo.full_name} · {customerInfo.reward_points} points</Text>}
     {customerLookupError ? <Text style={styles.formError}>{customerLookupError}</Text> : null}
     {cart.length ? cart.map((item) => <View style={styles.cartRow} key={item.id}>
-      <View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.promoLabel || `${money(item.price)} each`}</Text></View>
+      <View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.promoLabel || `${money(item.price)} each${item.customization ? ` · ${item.customization.size === 'large' ? 'Large' : 'Regular'}, ${item.customization.milk === 'oat' ? 'Oat milk' : 'Dairy'}, ${item.customization.sweetness}% sweet${item.customization.extraEspresso ? ', extra shot' : ''}` : ''}`}</Text></View>
       {!item.isPromo && <View style={styles.quantity}><Pressable onPress={() => onChangeQuantity(item.id, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable onPress={() => onChangeQuantity(item.id, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}
       <Text style={styles.price}>{money(item.price * item.quantity)}</Text>
     </View>) : <Text style={styles.subtitle}>Your cart is empty. Tap Add to order to get started.</Text>}
     {promotionLabel ? <Text style={styles.successText}>Promotion applied: {promotionLabel}</Text> : null}
     {discountTotal > 0 && <Text style={styles.promoPrice}>Discount: -{money(discountTotal)}</Text>}
+    {schedulePickup && <View style={styles.pickupSchedule}>
+      <Text style={styles.fieldLabel}>Pickup time</Text>
+      <Text style={styles.subtitle}>Choose ASAP or a 15-minute slot within the next 2 hours.</Text>
+      <View style={styles.optionRow}>
+        <OptionChoice label="ASAP · ~20 min" selected={!pickupAt} onPress={() => setPickupAt('')} />
+        {pickupSlots.map((slot) => <OptionChoice key={slot.value} label={slot.label} selected={pickupAt === slot.value} onPress={() => setPickupAt(slot.value)} />)}
+      </View>
+    </View>}
     <Text style={styles.total}>Total: {money(total)}</Text>
-    <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={onPlaceOrder}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
+    <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
   </View>;
 }
 function Queue({ orders, onUpdateStatus }) {
-  return <><Header eyebrow="Service choreography" title="Order queue" subtitle="Move orders through preparation." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id} · {order.customer}</Text><Text style={styles.subtitle}>{order.items} · {order.channel}</Text></View><View style={styles.queueActions}><Text style={styles.pill}>{order.status}</Text>{order.status !== 'Ready for pickup' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Ready for pickup')}><Text style={styles.buttonText}>Mark ready</Text></Pressable>}</View></View>)}</>;
+  const sortedOrders = [...orders].sort((left, right) => {
+    const leftTime = new Date(left.scheduled_pickup_at || left.estimated_pickup_at || left.created_at || 0).getTime();
+    const rightTime = new Date(right.scheduled_pickup_at || right.estimated_pickup_at || right.created_at || 0).getTime();
+    return leftTime - rightTime;
+  });
+  const upcomingOrders = sortedOrders.filter((order) => !['Completed', 'Cancelled'].includes(order.status));
+  return <>
+    <Header eyebrow="Service choreography" title="Order queue" subtitle="Orders are sorted by pickup time so staff can anticipate busy periods." />
+    {upcomingOrders.length > 0 && <View style={styles.card}><Text style={styles.cardTitle}>Upcoming pickups</Text>{upcomingOrders.slice(0, 8).map((order) => <Text key={`pickup-${order.id}`} style={styles.subtitle}>{pickupLabel(order) || 'Pickup time pending'} · #{order.id} · {order.customer}</Text>)}</View>}
+    {sortedOrders.length ? sortedOrders.map((order) => <View style={styles.listCard} key={order.id}>
+      <View style={styles.flex}><Text style={styles.cardTitle}>#{order.id} · {order.customer}</Text><Text style={styles.subtitle}>{order.items} · {order.channel}</Text>{pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}</View>
+      <View style={styles.queueActions}><Text style={styles.pill}>{order.status}</Text>
+        {order.status === 'New' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Preparing')}><Text style={styles.buttonText}>Start preparing</Text></Pressable>}
+        {order.status === 'Preparing' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Ready for pickup')}><Text style={styles.buttonText}>Mark ready</Text></Pressable>}
+        {order.status === 'Ready for pickup' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Completed')}><Text style={styles.buttonText}>Complete pickup</Text></Pressable>}
+      </View>
+    </View>) : <Text style={styles.subtitle}>No orders are waiting in the queue.</Text>}
+  </>;
 }
 function Receipts({ orders }) {
   return <><Header eyebrow="Service history" title="Receipts" subtitle="Recent counter and online orders." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.customer} · {order.items}</Text>{order.promotionTitle && <Text style={styles.successText}>Promotion: {order.promotionTitle}</Text>}{Number(order.discount_total || order.discountTotal || 0) > 0 && <Text style={styles.warning}>Discount: -{money(order.discount_total || order.discountTotal)}</Text>}</View><Text style={styles.price}>{money(order.total)}</Text></View>)}</>;
@@ -1419,9 +1668,11 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
     </View>
   </>;
 }
-function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, user, orders, onNavigate, onAdd, cart, onChangeQuantity, onPlaceOrder }) {
+function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, checkoutError, user, orders, notifications, onDismissNotification, onNavigate, onAdd, cart, onChangeQuantity, onPlaceOrder }) {
   const customerOrders = orders.filter((order) => order.customerEmail === user.email);
   const readyOrder = customerOrders.find((order) => order.status === 'Ready for pickup');
+  const activeOrder = customerOrders.find((order) => !['Completed', 'Cancelled'].includes(order.status));
+  const readyNotification = notifications.find((notification) => notification.title?.toLowerCase().includes('ready'));
   const currentTime = Date.now();
   const activePromotion = promotions.find((promotion) => promotion.is_active !== false
     && (!promotion.branchIds?.length || promotion.branchIds.includes(branchId))
@@ -1433,7 +1684,9 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
   return <>
     <Header eyebrow={`360 Degrees Specialty Cafe · ${branchName}`} title={`Good morning, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
     {user.customerCode && <View style={styles.customerIdCard}><QRCode value={user.customerCode} size={108} /><View style={styles.flex}><Text style={styles.eyebrow}>Customer ID</Text><Text style={styles.customerId}>{user.customerCode}</Text><Text style={styles.subtitle}>Show this code at checkout to earn points.</Text></View></View>}
-    {readyOrder && <View style={styles.notification}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text><Text style={styles.subtitle}>Order #{readyOrder.id} is ready at Lipa Branch.</Text></View>}
+    {(readyOrder || readyNotification) && <View style={styles.notification}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text>{readyNotification && <Pressable onPress={() => onDismissNotification(readyNotification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable>}</View><Text style={styles.subtitle}>{readyNotification?.message || `Order #${readyOrder.id} is ready at ${branchName}.`}</Text></View>}
+    {activeOrder && <View style={styles.card}><Text style={styles.cardTitle}>Order tracking · #{activeOrder.id}</Text><Text style={styles.pill}>{activeOrder.status}</Text>{pickupLabel(activeOrder) ? <Text style={styles.successText}>{pickupLabel(activeOrder)}</Text> : null}<Text style={styles.subtitle}>{activeOrder.items}</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('orders')}><Text>View order details</Text></Pressable></View>}
+    {notifications.filter((notification) => !notification.title?.toLowerCase().includes('ready')).slice(0, 3).map((notification) => <View style={styles.notification} key={notification.id}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View><Text style={styles.subtitle}>{notification.message}</Text></View>)}
     {activePromotion ? <View style={styles.promo}>
       <Text style={styles.eyebrow}>Featured promotion</Text>
       <Text style={styles.promoTitle}>{activePromotion.title}</Text>
@@ -1455,12 +1708,14 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
       {customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>)}
       <Pressable style={styles.buttonSecondary} onPress={() => onNavigate('menu')}><Text>See menu</Text></Pressable>
     </View>
-    <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} />
+    <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} schedulePickup />
     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
+    {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
   </>;
 }
 function Orders({ orders, user }) {
-  return <><Header eyebrow="Customer workspace" title="My orders" subtitle="Track your current pickup orders." />{orders.filter((order) => order.customerEmail === user.email).map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.items}</Text></View><Text style={styles.pill}>{order.status}</Text></View>)}</>;
+  const customerOrders = orders.filter((order) => order.customerEmail === user.email);
+  return <><Header eyebrow="Customer workspace" title="My orders" subtitle="Track order preparation and pickup times." />{customerOrders.length ? customerOrders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.items}</Text>{pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}</View><View><Text style={styles.pill}>{order.status}</Text><Text style={styles.price}>{money(order.total)}</Text></View></View>) : <Text style={styles.subtitle}>Your orders will appear here after checkout.</Text>}</>;
 }
 function Wallet({ user, onRedeem }) {
   const [points, setPoints] = useState(user.rewardPoints || 0);
@@ -1469,27 +1724,35 @@ function Wallet({ user, onRedeem }) {
   const [redeemingId, setRedeemingId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   useEffect(() => {
     if (!supabase || !user.id) return;
     let active = true;
     Promise.all([
       supabase.from('profiles').select('reward_points,customer_code').eq('id', user.id).single(),
-      supabase.from('reward_transactions').select('points,description,transaction_type,created_at,expires_at').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('reward_transactions').select('id,points,description,transaction_type,created_at,expires_at,redemption_code,redeemed_at').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('rewards').select('id,name,description,points_required').eq('is_active', true).order('points_required'),
     ]).then(([profileResult, historyResult, rewardsResult]) => {
       if (!active) return;
-      if (!profileResult.error) setPoints(profileResult.data.reward_points);
-      if (!historyResult.error) {
-        setHistory(historyResult.data);
-        const availablePoints = historyResult.data.reduce((total, transaction) => {
-          const expiredEarn = transaction.transaction_type === 'earned' && transaction.expires_at && new Date(transaction.expires_at).getTime() <= Date.now();
-          if (expiredEarn || transaction.transaction_type === 'expired') return total;
-          return total + Number(transaction.points);
-        }, 0);
-        setPoints(Math.max(0, availablePoints));
+      const lookupError = profileResult.error || historyResult.error || rewardsResult.error;
+      if (lookupError) {
+        setLoadError(lookupError.message || 'Unable to load loyalty information.');
+        return;
       }
-      if (!rewardsResult.error) setRewards(rewardsResult.data);
-    }).catch((error) => console.error('Loyalty lookup failure:', error.message));
+      setLoadError('');
+      setPoints(profileResult.data.reward_points);
+      setHistory(historyResult.data);
+      const availablePoints = historyResult.data.reduce((total, transaction) => {
+        const expiredEarn = transaction.transaction_type === 'earned' && transaction.expires_at && new Date(transaction.expires_at).getTime() <= Date.now();
+        if (expiredEarn || transaction.transaction_type === 'expired') return total;
+        return total + Number(transaction.points);
+      }, 0);
+      setPoints(Math.max(0, availablePoints));
+      setRewards(rewardsResult.data);
+    }).catch((lookupError) => {
+      console.error('Loyalty lookup failure:', lookupError.message);
+      if (active) setLoadError(lookupError.message || 'Unable to load loyalty information.');
+    });
     return () => { active = false; };
   }, [user.id]);
   const redeem = async (reward) => {
@@ -1497,18 +1760,28 @@ function Wallet({ user, onRedeem }) {
     try {
       const result = await onRedeem(reward.id);
       setPoints(result.pointsBalance);
-      setHistory((current) => [{ points: -reward.points_required, description: `Redeemed: ${reward.name}`, transaction_type: 'redeemed', created_at: new Date().toISOString() }, ...current]);
+      setHistory((current) => [{
+        id: result.redemptionCode,
+        points: -reward.points_required,
+        description: `Redeemed: ${reward.name}`,
+        transaction_type: 'redeemed',
+        created_at: new Date().toISOString(),
+        redemption_code: result.redemptionCode,
+      }, ...current]);
       setMessage(`${reward.name} redeemed.`);
     } catch (redeemError) { setError(redeemError.message || 'Unable to redeem reward.'); }
     finally { setRedeemingId(''); }
   };
-  const pointsUntilReward = rewards.length ? Math.max(0, rewards.find((reward) => reward.points_required > points)?.points_required - points || 0) : 0;
+  const nextReward = rewards.find((reward) => reward.points_required > points);
+  const pointsUntilReward = nextReward ? nextReward.points_required - points : 0;
+  const progressPercent = nextReward ? Math.min(100, Math.round(points / nextReward.points_required * 100)) : (rewards.length ? 100 : 0);
   return <>
     <Header eyebrow="360 rewards" title="Wallet & rewards" subtitle="Your points and reward history." />
     {user.customerCode && <View style={styles.customerIdCard}><QRCode value={user.customerCode} size={96} /><View style={styles.flex}><Text style={styles.eyebrow}>Customer ID</Text><Text style={styles.customerId}>{user.customerCode}</Text></View></View>}
-    <View style={styles.reward}><Text style={styles.eyebrow}>360 REWARDS</Text><Text style={styles.rewardPoints}>{points} points</Text><Text style={styles.subtitle}>{pointsUntilReward ? `${pointsUntilReward} points to your next reward` : 'Choose a reward below'}</Text><View style={styles.progress}><View style={styles.progressFill} /></View></View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Rewards</Text>{rewards.length ? rewards.map((reward) => <View style={styles.listCard} key={reward.id}><View style={styles.flex}><Text style={styles.cardTitle}>{reward.name}</Text><Text style={styles.subtitle}>{reward.description}</Text></View><View><Text style={styles.pill}>{reward.points_required} points</Text><Pressable disabled={points < reward.points_required || redeemingId === reward.id} style={[styles.smallButton, (points < reward.points_required || redeemingId === reward.id) && styles.disabled]} onPress={() => redeem(reward)}><Text style={styles.buttonText}>{redeemingId === reward.id ? 'Redeeming...' : 'Redeem'}</Text></Pressable></View></View>) : <Text style={styles.subtitle}>Rewards will appear here when available.</Text>}{message ? <Text style={styles.successText}>{message}</Text> : null}{error ? <Text style={styles.formError}>{error}</Text> : null}</View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Points history</Text>{history.length ? history.map((transaction) => <View style={styles.accountRow} key={`${transaction.created_at}-${transaction.description}`}><View style={styles.flex}><Text style={styles.cardTitle}>{transaction.description}</Text><Text style={styles.subtitle}>{new Date(transaction.created_at).toLocaleDateString()}</Text></View><Text style={styles.price}>{transaction.points > 0 ? '+' : ''}{transaction.points}</Text></View>) : <Text style={styles.subtitle}>Your points activity will appear here.</Text>}</View>
+    <View style={styles.reward}><Text style={styles.eyebrow}>360 REWARDS</Text><Text style={styles.rewardPoints}>{points} points</Text><Text style={styles.subtitle}>{nextReward ? `${pointsUntilReward} points to ${nextReward.name}` : rewards.length ? 'You can redeem an available reward' : 'Earn points with every eligible purchase'}</Text><View style={styles.progress}><View style={[styles.progressFill, { width: `${progressPercent}%` }]} /></View></View>
+    {loadError ? <Text style={styles.formError}>{loadError}</Text> : null}
+    <View style={styles.card}><Text style={styles.cardTitle}>Rewards</Text>{rewards.length ? rewards.map((reward) => <View style={styles.listCard} key={reward.id}><View style={styles.flex}><Text style={styles.cardTitle}>{reward.name}</Text><Text style={styles.subtitle}>{reward.description}</Text></View><View><Text style={styles.pill}>{reward.points_required} points</Text><Text style={styles.subtitle}>{points >= reward.points_required ? 'Eligible now' : `${reward.points_required - points} more points needed`}</Text><Pressable disabled={points < reward.points_required || redeemingId === reward.id} style={[styles.smallButton, (points < reward.points_required || redeemingId === reward.id) && styles.disabled]} onPress={() => redeem(reward)}><Text style={styles.buttonText}>{redeemingId === reward.id ? 'Redeeming...' : 'Redeem'}</Text></Pressable></View></View>) : <Text style={styles.subtitle}>Rewards will appear here when available.</Text>}{message ? <Text style={styles.successText}>{message}</Text> : null}{error ? <Text style={styles.formError}>{error}</Text> : null}</View>
+    <View style={styles.card}><Text style={styles.cardTitle}>Points history</Text>{history.length ? history.map((transaction) => <View style={styles.accountRow} key={transaction.id || `${transaction.created_at}-${transaction.description}`}><View style={styles.flex}><Text style={styles.cardTitle}>{transaction.description}</Text><Text style={styles.subtitle}>{new Date(transaction.created_at).toLocaleDateString()}{transaction.expires_at ? ` · Expires ${new Date(transaction.expires_at).toLocaleDateString()}` : ''}</Text>{transaction.redemption_code && <View style={styles.redemptionCode}>{!transaction.redeemed_at && <QRCode value={transaction.redemption_code} size={78} />}<View style={styles.flex}><Text style={styles.fieldLabel}>{transaction.redeemed_at ? 'Redeemed at counter' : 'Show cashier to redeem'}</Text><Text style={styles.customerId}>{transaction.redemption_code}</Text></View></View>}</View><Text style={styles.price}>{transaction.points > 0 ? '+' : ''}{transaction.points}</Text></View>) : <Text style={styles.subtitle}>Your points activity will appear here.</Text>}</View>
   </>;
 }
 
@@ -1585,10 +1858,13 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
   authSafeArea: { flex: 1, backgroundColor: '#33241e' },
+  authKeyboardAvoiding: { flex: 1 },
   authPage: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  authPageCompact: { padding: 14 },
   authCard: { width: '100%', maxWidth: 460, backgroundColor: '#fffefa', borderRadius: 18, padding: 28 },
-  authBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 32 },
-  authTabs: { flexDirection: 'row', backgroundColor: '#f3eee8', borderRadius: 9, padding: 4, marginBottom: 24 },
+  authCardCompact: { padding: 20, borderRadius: 16 },
+  authBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 24 },
+  authTabs: { flexDirection: 'row', backgroundColor: '#f3eee8', borderRadius: 9, padding: 4, marginBottom: 20 },
   authTab: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 7 },
   authTabActive: { backgroundColor: '#d9683c' },
   authTabText: { color: '#82766e', fontSize: 13, fontWeight: '700' },
@@ -1596,7 +1872,9 @@ const styles = StyleSheet.create({
   brandNameDark: { color: '#30251f', fontFamily: 'Georgia', fontSize: 16, maxWidth: 180 },
   branchDark: { color: '#82766e', fontSize: 9, letterSpacing: 2, marginTop: 4 },
   authTitle: { color: '#30251f', fontFamily: 'Georgia', fontSize: 30, marginTop: 7, marginBottom: 8 },
+  authTitleCompact: { fontSize: 26 },
   authSubtitle: { color: '#82766e', fontSize: 13, lineHeight: 20, marginBottom: 20 },
+  authSubtitleCompact: { marginBottom: 14 },
   authInput: { minHeight: 48, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, marginBottom: 12, fontSize: 14 },
   loyaltyInputWrapper: { position: 'relative', marginBottom: 12 },
   loyaltyRuleInput: { minHeight: 62, marginBottom: 0, paddingTop: 8, paddingBottom: 23, textAlignVertical: 'top' },
@@ -1692,6 +1970,11 @@ const styles = StyleSheet.create({
   deleteButtonText: { color: '#a33f2d', fontSize: 11, fontWeight: '700' },
   deleteConfirmation: { borderWidth: 1, borderColor: '#d9a99a', borderRadius: 8, padding: 14, marginBottom: 14, backgroundColor: '#fff' },
   confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  optionChoice: { borderWidth: 1, borderColor: '#e9e0d7', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#fff' },
+  optionChoiceSelected: { backgroundColor: '#f5ece6', borderColor: '#d9683c' },
+  optionChoiceText: { color: '#5e5149', fontSize: 11 },
+  optionChoiceTextSelected: { color: '#b94f2b', fontWeight: '700' },
   confirmCancelButton: { borderWidth: 1, borderColor: '#e9e0d7', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 7 },
   confirmCancelText: { color: '#5e5149', fontSize: 11, fontWeight: '700' },
   confirmDeleteButton: { backgroundColor: '#a33f2d', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 7 },
@@ -1714,12 +1997,17 @@ const styles = StyleSheet.create({
   queueActions: { alignItems: 'flex-end', gap: 8 },
   smallButton: { backgroundColor: '#d9683c', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 7 },
   notification: { backgroundColor: '#e7eddf', borderWidth: 1, borderColor: '#bdcdb0', borderRadius: 12, padding: 16, marginBottom: 16 },
+  notificationHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  dismissText: { color: '#596849', fontSize: 11, fontWeight: '700' },
+  pickupSchedule: { backgroundColor: '#fbf8f3', borderRadius: 9, padding: 12, marginTop: 12 },
+  redemptionCode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 10, marginTop: 8, backgroundColor: '#fff', borderRadius: 8 },
   customerIdCard: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 16 },
   customerId: { color: '#30251f', fontSize: 16, fontWeight: '700', marginVertical: 5 },
   customerIdRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   customerIdInput: { flex: 1, marginBottom: 0 },
   scannerBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(20, 13, 10, 0.65)' },
   scannerSheet: { backgroundColor: '#fffefa', borderRadius: 12, padding: 16 },
+  customizeSheet: { backgroundColor: '#fffefa', borderRadius: 12, padding: 18, maxHeight: '90%' },
   scanCamera: { width: '100%', height: 320, borderRadius: 8, overflow: 'hidden' },
   notificationTitle: { color: '#596849', fontSize: 15, fontWeight: '700', marginBottom: 5 },
   price: { color: '#5f4031', fontWeight: '700', fontSize: 14 },
