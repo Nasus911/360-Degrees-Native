@@ -7,8 +7,16 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "plugins": [
-      ["expo-camera", { "cameraPermission": "Allow 360 Degrees to scan customer loyalty QR codes.", "microphonePermission": false, "recordAudioAndroid": false }],
-      "expo-image-picker"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow 360 Degrees to scan customer loyalty QR codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-image-picker",
+      "expo-status-bar"
     ],
     "ios": {
       "supportsTablet": true

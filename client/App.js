@@ -7,7 +7,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +14,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
@@ -34,25 +35,20 @@ const products = [
 ];
 
 const roleConfig = {
-  admin: { label: 'Head Admin', person: 'Richard Dean Briones', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['reports', 'Reports', '▤'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
-  head_admin: { label: 'Head Admin', person: '', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['reports', 'Reports', '▤'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
-  branch_admin: { label: 'Branch Admin', person: '', subtitle: 'Branch administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['inventory', 'Inventory', '▪'], ['reports', 'Reports', '▤'], ['team', 'Employees', '♙'], ['receipts', 'Today orders', '◷'], ['audit', 'Activity log', '▣']] },
-  cashier: { label: 'Cashier', person: '', subtitle: 'Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
-  barista: { label: 'Barista', person: '', subtitle: 'Barista', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷']] },
-  staff: { label: 'Barista / Cashier', person: 'Luis Reyes', subtitle: 'Barista · Shift A', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  admin: { label: 'Head Admin', person: 'Richard Dean Briones', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
+  head_admin: { label: 'Head Admin', person: '', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
+  branch_admin: { label: 'Branch Admin', person: '', subtitle: 'Branch administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['inventory', 'Inventory', '▪'], ['team', 'Employees', '♙'], ['receipts', 'Today orders', '◷'], ['audit', 'Activity log', '▣']] },
+  cashier: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  barista: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  staff: { label: 'Barista/Cashier', person: 'Luis Reyes', subtitle: 'Barista/Cashier · Shift A', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
   customer: { label: 'Customer', person: '', subtitle: '360 Rewards member', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['wallet', 'Wallet & rewards', '◎'], ['account', 'Manage account', '♙'], ['branch', 'Pickup branch', '⌖']] },
+  guest: { label: 'Guest', person: '', subtitle: 'Temporary guest account · no loyalty points', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['branch', 'Pickup branch', '⌖']] },
 };
 
 const demoAccounts = [
   { id: 'admin-demo', name: 'Richard Dean Briones', email: 'admin@360degrees.cafe', password: 'admin123', role: 'admin' },
   { id: 'staff-demo', name: 'Luis Reyes', email: 'staff@360degrees.cafe', password: 'staff123', role: 'staff' },
   { id: 'customer-demo', name: 'Marco Rafaeles', email: 'customer@360degrees.cafe', password: 'customer123', role: 'customer', customerCode: 'CS-2026-0001' },
-];
-
-const initialOrders = [
-  { id: 'SC-1844', customer: 'Marco Rafaeles', customerEmail: 'customer@360degrees.cafe', items: 'Sea Salt Cold Brew × 1', total: 215, status: 'Preparing', channel: 'Online' },
-  { id: 'SC-1845', customer: 'Walk-in', customerEmail: '', items: 'Iced Spanish Latte × 2', total: 370, status: 'New', channel: 'Counter' },
-  { id: 'SC-1846', customer: 'Ana Cruz', customerEmail: 'ana@example.com', items: 'Matcha Strawberry × 1', total: 225, status: 'Ready for pickup', channel: 'Online' },
 ];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
@@ -69,7 +65,7 @@ const toClientOrder = (order, user) => ({
   ...order,
   databaseId: order.id,
   id: order.order_number ? `SC-${order.order_number}` : order.id,
-  customer: order.profiles?.full_name || (order.customer_id ? 'Customer' : 'Walk-in'),
+  customer: order.profiles?.full_name || (order.customer_id === user?.id ? user.name : order.customer_id ? 'Customer' : 'Walk-in'),
   customerEmail: order.profiles?.email || (order.customer_id === user?.id ? user.email : ''),
   status: orderStatusLabels[order.status] || order.status,
   channel: order.channel === 'online' ? 'Online' : 'Counter',
@@ -119,6 +115,13 @@ async function requestApi(path, options = {}) {
 
 
 export default function App() {
+  return <SafeAreaProvider>
+    <StatusBar style={Platform.OS === 'android' ? 'light' : 'dark'} backgroundColor="#33241e" translucent={false} />
+    <AppContent />
+  </SafeAreaProvider>;
+}
+
+function AppContent() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState('');
@@ -131,8 +134,11 @@ export default function App() {
   const [role, setRole] = useState(null);
   const [page, setPage] = useState('overview');
   const [cart, setCart] = useState([]);
+  const [cartOpen, setCartOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [orders, setOrders] = useState(initialOrders);
+  const [orders, setOrders] = useState([]);
+  const [localActivityLogs, setLocalActivityLogs] = useState([]);
+  const [orderLoadError, setOrderLoadError] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
@@ -158,18 +164,31 @@ export default function App() {
       try {
         const [loadedOrders, loadedNotifications] = await Promise.all([
           requestApi(`/api/orders${isHeadAdmin && activeBranchId ? `?branchId=${encodeURIComponent(activeBranchId)}` : ''}`),
-          role === 'customer' ? requestApi('/api/notifications') : Promise.resolve(null),
+          role === 'customer' || isHeadAdmin ? requestApi('/api/notifications') : Promise.resolve(null),
         ]);
         if (!active) return;
         setOrders(loadedOrders.map((order) => toClientOrder(order, user)));
         if (loadedNotifications) setNotifications(loadedNotifications);
+        setOrderLoadError('');
       } catch (error) {
-        if (active) console.error('Order and notification refresh failure:', error.message);
+        if (active) {
+          setOrderLoadError(error.message || 'Unable to load orders from the server.');
+          console.error('Order and notification refresh failure:', error.message);
+        }
       }
     };
     refreshOrders();
+    const orderChannel = supabase.channel(`orders-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, refreshOrders)
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' && active) console.error('Live order updates are unavailable; periodic refresh remains enabled.');
+      });
     const timer = setInterval(refreshOrders, 12000);
-    return () => { active = false; clearInterval(timer); };
+    return () => {
+      active = false;
+      clearInterval(timer);
+      supabase.removeChannel(orderChannel).catch((error) => console.error('Order subscription cleanup failure:', error.message));
+    };
   }, [activeBranchId, isHeadAdmin, role, user]);
 
   useEffect(() => {
@@ -197,7 +216,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    if (role === 'customer') {
+    if (role === 'customer' || role === 'guest') {
       if (!supabase) {
         const demoBranch = { id: 'demo-lipa', name: 'Lipa Branch', city: 'Lipa City', is_active: true };
         setBranches([demoBranch]);
@@ -205,13 +224,32 @@ export default function App() {
         return;
       }
       let active = true;
-      supabase.from('branches').select('id,name,city,is_active').eq('is_active', true).order('name').then(({ data, error }) => {
-        if (active && !error) {
+      const refreshBranches = async () => {
+        try {
+          const data = await requestApi('/api/branches');
+          if (!active) return;
           setBranches(data);
-          if (!user.branchId) setActiveBranchId((current) => current || data[0]?.id || '');
+          setActiveBranchId((current) => data.some((branch) => branch.id === current)
+            ? current
+            : user.branchId && data.some((branch) => branch.id === user.branchId)
+              ? user.branchId
+              : data[0]?.id || '');
+        } catch (error) {
+          if (active) console.error('Customer branch refresh failure:', error.message);
         }
-      });
-      return () => { active = false; };
+      };
+      refreshBranches();
+      const timer = setInterval(refreshBranches, 10000);
+      const channel = supabase.channel(`active-branches-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'branches' }, refreshBranches)
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' && active) console.error('Live branch updates are unavailable; periodic refresh remains enabled.');
+        });
+      return () => {
+        active = false;
+        clearInterval(timer);
+        supabase.removeChannel(channel).catch((error) => console.error('Branch subscription cleanup failure:', error.message));
+      };
     }
     if (!['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff'].includes(role)) return;
     if (!supabase) {
@@ -223,17 +261,31 @@ export default function App() {
       return;
     }
     let active = true;
-    requestApi('/api/admin/branches').then((data) => {
-      if (!active) return;
-      setBranches(data);
-      if (role === 'branch_admin' || role === 'cashier' || role === 'barista' || role === 'staff') {
-        const assignedBranch = user.branchId || data[0]?.id || '';
-        setActiveBranchId((current) => (assignedBranch && current !== assignedBranch ? assignedBranch : current || assignedBranch));
+    const refreshAdminBranches = async () => {
+      try {
+        const data = await requestApi('/api/admin/branches');
+        if (!active) return;
+        setBranches(data);
+        if (role === 'branch_admin' || role === 'cashier' || role === 'barista' || role === 'staff') {
+          const assignedBranch = user.branchId || data[0]?.id || '';
+          setActiveBranchId((current) => (assignedBranch && current !== assignedBranch ? assignedBranch : current || assignedBranch));
+        }
+      } catch (error) {
+        if (active) console.error('Branch loading failure:', error.message);
       }
-    }).catch((error) => {
-      if (active) console.error('Branch loading failure:', error.message);
-    });
-    return () => { active = false; };
+    };
+    refreshAdminBranches();
+    const timer = setInterval(refreshAdminBranches, 10000);
+    const channel = supabase.channel(`admin-branches-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'branches' }, refreshAdminBranches)
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' && active) console.error('Live branch updates are unavailable; periodic refresh remains enabled.');
+      });
+    return () => {
+      active = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel).catch((error) => console.error('Branch subscription cleanup failure:', error.message));
+    };
   }, [role, user]);
 
   useEffect(() => {
@@ -306,8 +358,14 @@ export default function App() {
         if (session?.user) {
           const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
           if (error) throw error;
+          if (profile?.role === 'guest' && (!profile.guest_expires_at || Date.parse(profile.guest_expires_at) <= Date.now())) {
+            const { error: signOutError } = await supabase.auth.signOut();
+            if (signOutError) throw signOutError;
+            if (active) setAuthError('Your guest account has expired. Start a new guest session to continue.');
+            return;
+          }
           if (active && profile && roleConfig[profile.role]) {
-            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id });
+            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
             setRole(profile.role);
             setPage(roleConfig[profile.role].initialPage);
           }
@@ -324,7 +382,35 @@ export default function App() {
 
   if (!user || !config) {
     if (authLoading) return <SafeAreaView style={styles.authSafeArea}><Text style={styles.authSubtitle}>Loading your account...</Text></SafeAreaView>;
-    return <AuthScreen accounts={supabase ? [] : accounts} authError={authError} onLogin={async (account) => {
+    return <AuthScreen accounts={supabase ? [] : accounts} authError={authError} onGuest={async (fullName) => {
+      let guest;
+      if (supabase) {
+        if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address to start a guest account.');
+        const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/auth/guest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to start a guest account.');
+        const { error } = await supabase.auth.setSession(result.session);
+        if (error) throw error;
+        guest = {
+          id: result.profile.id,
+          name: result.profile.full_name,
+          email: result.profile.email,
+          role: 'guest',
+          customerCode: result.profile.customer_code,
+          guestExpiresAt: result.profile.guest_expires_at,
+        };
+      } else {
+        const guestId = `GUEST-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+        guest = { id: guestId, name: fullName, email: '', role: 'guest', customerCode: guestId, guestExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() };
+      }
+      setUser(guest);
+      setRole('guest');
+      setPage(roleConfig.guest.initialPage);
+    }} onLogin={async (account) => {
       if (supabase) {
         const { data, error } = await supabase.auth.signInWithPassword({ email: account.email, password: account.password });
         if (error) throw new Error('Email or password is incorrect.');
@@ -332,7 +418,7 @@ export default function App() {
         if (profileError) throw profileError;
         if (!profile || !roleConfig[profile.role]) throw new Error('Your account profile is incomplete. Contact an administrator.');
         if (profile.is_active === false) throw new Error('This account is inactive. Contact a head administrator.');
-        const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id };
+        const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };
         setUser(signedIn); setRole(signedIn.role); setPage(roleConfig[signedIn.role].initialPage);
       } else {
         setUser(account); setRole(account.role); setPage(roleConfig[account.role].initialPage);
@@ -378,7 +464,7 @@ export default function App() {
   });
   const signOut = async () => {
     if (supabase) await supabase.auth.signOut();
-    setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch(''); setNotifications([]); setOrders(supabase ? [] : initialOrders);
+    setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch(''); setNotifications([]);
   };
   const saveAccountProfile = async ({ fullName, contactNumber, address }) => {
     if (supabase) {
@@ -534,7 +620,7 @@ export default function App() {
     const created = supabase
       ? await requestApi('/api/admin/branches', { method: 'POST', body: JSON.stringify(branch) })
       : { ...branch, id: `demo-branch-${Date.now()}`, is_active: true };
-    setBranches((current) => [...current, created]);
+    setBranches((current) => [...current, created].sort((left, right) => left.name.localeCompare(right.name)));
     return created;
   };
   const toggleBranch = async (branch) => {
@@ -577,15 +663,17 @@ export default function App() {
       return result;
     }
     const preview = previewPromotion(cart, promotions, activeBranchId);
-    const orderId = `SC-${1847 + orders.length}`;
+    const orderId = `SC-DEMO-${Date.now()}`;
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     setOrders((current) => [{
       id: orderId,
       customer: customerCode || 'Walk-in',
+      branch_id: activeBranchId || user.branchId || branches[0]?.id || '',
       items: preview.items.map((item) => `${item.name} × ${item.quantity}`).join(', '),
       total: Math.max(0, subtotal - preview.discountTotal),
       status: 'New',
       channel: 'Counter',
+      created_at: new Date().toISOString(),
       estimated_pickup_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     }, ...current]);
     setCheckoutNotice(`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`);
@@ -608,25 +696,30 @@ export default function App() {
           order_items: result.items,
           promotions: { title: result.promotion?.title },
         }, user), ...current]);
-        setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : 'Order placed.'}`);
+        setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : 'Order placed.'}`);
         setCart([]);
+        setCartOpen(false);
       } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
       return;
     }
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const order = {
-      id: `SC-${1847 + orders.length}`,
+      id: `SC-DEMO-${Date.now()}`,
       customer: user.name,
+      customerId: user.id,
       customerEmail: user.email,
+      branch_id: activeBranchId || user.branchId || branches[0]?.id || '',
       items: cart.map((item) => `${item.name} × ${item.quantity}`).join(', '),
       total: subtotal,
       status: 'New',
       channel: 'Online',
+      created_at: new Date().toISOString(),
       scheduled_pickup_at: pickupAt,
       estimated_pickup_at: pickupAt || new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     };
     setOrders((current) => [order, ...current]);
     setCart([]);
+    setCartOpen(false);
     Alert.alert('Order placed', 'Your pickup order is being prepared.');
   };
   const updateOrderStatus = async (orderId, status) => {
@@ -642,6 +735,29 @@ export default function App() {
       setOrders((current) => current.map((item) => item.id === orderId
         ? { ...item, status: orderStatusLabels[updated.status] || updated.status }
         : item));
+      if (!supabase && status === 'Completed') {
+        const completedAt = new Date().toISOString();
+        const branchId = order.branch_id || activeBranchId || user.branchId || '';
+        const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Branch';
+        const log = {
+          id: `demo-completion-${order.databaseId || order.id}`,
+          action: 'order.completed',
+          entity_type: 'order',
+          entity_id: order.id,
+          branch_id: branchId,
+          created_at: completedAt,
+          profiles: { full_name: user.name },
+          details: {
+            orderId: order.id,
+            customerName: order.customer || 'Walk-in',
+            branchName,
+            baristaName: user.name,
+            completionTimestamp: completedAt,
+            statusChangedTo: 'Finished',
+          },
+        };
+        setLocalActivityLogs((current) => [log, ...current.filter((entry) => entry.id !== log.id)]);
+      }
       if (status === 'Ready for pickup') {
         setNotifications((current) => [{
           id: `${orderId}-ready`,
@@ -687,39 +803,56 @@ export default function App() {
         </Animated.View>
         <View style={styles.main}>
           {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><Text style={styles.mobileBrandMark}>360</Text><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
-          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}><Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : role === 'customer' ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
-          <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}>
-            {page === 'overview' && <AdminOverview summary={reportSummary} onNavigate={navigate} />}
+          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
+          <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
+            {page === 'overview' && <AdminOverview summary={reportSummary} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
-            {page === 'inventory' && <Inventory branchId={activeBranchId || user.branchId} isHeadAdmin={isHeadAdmin} />}
+            {page === 'inventory' && <Inventory branchId={activeBranchId || user.branchId} isHeadAdmin={isHeadAdmin} notifications={isHeadAdmin ? notifications : []} onDismissNotification={dismissNotification} branches={branches} />}
             {page === 'products' && <AdminProducts products={catalogProducts} branches={branches} defaultBranchId={user.branchId || activeBranchId} isHeadAdmin={isHeadAdmin} onCreateProduct={createProduct} onDeleteProduct={deleteProduct} />}
             {page === 'promotions' && <Promotions promotions={promotions} products={catalogProducts.filter((product) => product.category !== 'Inventory')} branches={branches} defaultBranchId={user.branchId || activeBranchId} isHeadAdmin={isHeadAdmin} onCreatePromotion={createPromotion} onDeletePromotion={deletePromotion} />}
-            {page === 'reports' && <Reports summary={reportSummary} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'loyalty' && <LoyaltyAdmin onSave={saveLoyaltySettings} />}
-            {page === 'audit' && <AuditLogs branchId={activeBranchId} />}
+            {page === 'audit' && <AuditLogs branchId={isHeadAdmin ? null : user.branchId} demoLogs={localActivityLogs} />}
             {page === 'team' && <TeamAccounts accounts={accounts} branches={branches} isHeadAdmin={isHeadAdmin} branchId={user.branchId || activeBranchId} onCreate={(account) => setAccounts((current) => [...current, account])} onToggleAccount={async (account) => {
               const updated = supabase ? await requestApi(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !account.isActive }) }) : { ...account, isActive: !account.isActive };
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
             {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
-            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} />}
+            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} />}
             {page === 'receipts' && <Receipts orders={orders} />}
-            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} />}
-            {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
+            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} />}
+            {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
             {page === 'orders' && <Orders orders={orders} user={user} />}
-            {page === 'wallet' && <Wallet user={user} onRedeem={redeemReward} />}
+            {page === 'wallet' && role === 'customer' && <Wallet user={user} onRedeem={redeemReward} />}
             {page === 'account' && <ManageAccount user={user} onSaveProfile={saveAccountProfile} onChangePassword={changeAccountPassword} />}
             {page === 'branch' && <BranchPicker branches={branches.filter((branch) => branch.is_active !== false)} selectedBranchId={activeBranchId} onSelectBranch={(id) => { setActiveBranchId(id); navigate('home'); }} />}
           </ScrollView>
+          {(role === 'customer' || role === 'guest') && <>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.reduce((sum, item) => sum + item.quantity, 0)} items`} style={styles.cartFloatingButton} onPress={() => setCartOpen(true)}>
+              <Text style={styles.cartFloatingText}>Cart · {cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
+            </Pressable>
+            <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
+              <View style={styles.cartModalBackdrop}>
+                <View style={styles.cartModalSheet}>
+                  <View style={styles.cartModalHeader}><Text style={styles.title}>Your cart</Text><Pressable accessibilityRole="button" accessibilityLabel="Close cart" style={styles.closeButtonLight} onPress={() => setCartOpen(false)}><Text style={styles.closeIconLight}>×</Text></Pressable></View>
+                  <ScrollView keyboardShouldPersistTaps="handled">
+                    <CartPanel cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} schedulePickup />
+                    {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
+                    {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
+                  </ScrollView>
+                </View>
+              </View>
+            </Modal>
+          </>}
         </View>
       </View>
     </SafeAreaView>
   );
 }
 
-function AuthScreen({ accounts, authError, onLogin, onRegister }) {
+function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
+  const [guestName, setGuestName] = useState('');
   const [email, setEmail] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [password, setPassword] = useState('');
@@ -727,6 +860,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
   const passwordRef = useRef(null);
   const { width } = useWindowDimensions();
 
@@ -747,6 +881,15 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
   };
 
   const switchMode = () => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); };
+  const startGuestSession = () => {
+    const fullName = guestName.trim();
+    if (fullName.length < 2 || fullName.length > 100) return setError('Enter your name (2–100 characters).');
+    setGuestSubmitting(true);
+    setError('');
+    return onGuest(fullName)
+      .catch((guestError) => setError(guestError.message || 'Unable to start a guest account.'))
+      .finally(() => setGuestSubmitting(false));
+  };
   return <SafeAreaView style={styles.authSafeArea}>
     <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView contentContainerStyle={[styles.authPage, width < 480 && styles.authPageCompact]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
@@ -758,27 +901,35 @@ function AuthScreen({ accounts, authError, onLogin, onRegister }) {
             <Text style={styles.branchDark}>LIPA BRANCH</Text>
           </View>
         </View>
-        <View style={styles.authTabs}>
+        {mode !== 'guest' && <View style={styles.authTabs}>
           <Pressable onPress={() => { setMode('login'); setError(''); }} style={[styles.authTab, mode === 'login' && styles.authTabActive]}>
-            <Text style={[styles.authTabText, mode === 'login' && styles.authTabTextActive]}>Login</Text>
+            <Text style={[styles.authTabText, mode === 'login' && styles.authTabTextActive]}>Sign In</Text>
           </Pressable>
           <Pressable onPress={() => { setMode('register'); setError(''); }} style={[styles.authTab, mode === 'register' && styles.authTabActive]}>
-            <Text style={[styles.authTabText, mode === 'register' && styles.authTabTextActive]}>Register</Text>
+            <Text style={[styles.authTabText, mode === 'register' && styles.authTabTextActive]}>Sign Up</Text>
           </Pressable>
-        </View>
-        <Text style={styles.eyebrow}>{mode === 'login' ? 'Welcome back' : 'Join 360 rewards'}</Text>
-        <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : 'Create your account'}</Text>
-        <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : 'New accounts start as customer accounts.'}</Text>
+        </View>}
+        <Text style={styles.eyebrow}>{mode === 'login' ? 'Welcome back' : mode === 'guest' ? 'Guest checkout' : 'Join 360 rewards'}</Text>
+        <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : mode === 'guest' ? 'Who is picking up?' : 'Create your account'}</Text>
+        <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : mode === 'guest' ? 'Enter your name so the barista can identify your order.' : 'New accounts start as customer accounts.'}</Text>
+        {mode === 'guest' && <TextInput value={guestName} onChangeText={setGuestName} placeholder="Your name *" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={styles.authInput} />}
         {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" autoCapitalize="words" style={styles.authInput} />}
-        <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />
+        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />}
         {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />}
-        <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />
+        {mode !== 'guest' && <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />}
         {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
         {authError ? <Text style={styles.formError}>{authError}</Text> : null}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
-        <Pressable style={styles.authButton} onPress={submit}>
-          <Text style={styles.buttonText}>{mode === 'login' ? 'Sign in' : 'Create account'}</Text>
-        </Pressable>
+        {mode !== 'guest' ? <Pressable style={styles.authButton} onPress={submit}>
+          <Text style={styles.buttonText}>{mode === 'login' ? 'Sign In' : 'Sign Up'}</Text>
+        </Pressable> : <>
+          <Pressable disabled={guestSubmitting} style={[styles.authButton, guestSubmitting && styles.disabled]} onPress={startGuestSession}><Text style={styles.buttonText}>{guestSubmitting ? 'Starting guest session...' : 'Continue as Guest'}</Text></Pressable>
+          <Pressable style={styles.authSwitch} onPress={() => { setMode('login'); setError(''); }}><Text style={styles.authSwitchText}>Back to sign in</Text></Pressable>
+        </>}
+        {mode === 'login' && <Pressable style={styles.guestButton} onPress={() => { setMode('guest'); setError(''); }}>
+          <Text style={styles.guestButtonText}>Continue as Guest Account</Text>
+          <Text style={styles.guestHint}>Temporary access · no loyalty points</Text>
+        </Pressable>}
         {mode === 'login' && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
       </View>
     </ScrollView>
@@ -794,7 +945,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [accountRole, setAccountRole] = useState(isHeadAdmin ? 'branch_admin' : 'cashier');
+  const [accountRole, setAccountRole] = useState(isHeadAdmin ? 'branch_admin' : 'staff');
   const [branchId, setBranchId] = useState(assignedBranchId || '');
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
@@ -803,8 +954,8 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
-  const roles = isHeadAdmin ? ['branch_admin', 'cashier', 'barista', 'customer'] : ['cashier', 'barista'];
-  const roleLabel = (value) => ({ admin: 'Head Admin', head_admin: 'Head Admin', branch_admin: 'Branch Admin', cashier: 'Cashier', barista: 'Barista', staff: 'Staff', customer: 'Customer' })[value] || value;
+  const roles = isHeadAdmin ? ['branch_admin', 'staff', 'customer'] : ['staff'];
+  const roleLabel = (value) => ({ admin: 'Head Admin', head_admin: 'Head Admin', branch_admin: 'Branch Admin', cashier: 'Barista/Cashier', barista: 'Barista/Cashier', staff: 'Barista/Cashier', customer: 'Customer' })[value] || value;
   const createAccount = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!name.trim()) return setError('Enter the account holder’s full name.');
@@ -865,7 +1016,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
       setShowTemporaryPassword(false);
       setContactNumber('');
       setAddress('');
-      Alert.alert('Account created', `The ${accountRole} account can now sign in with this email and password.`);
+      Alert.alert('Account created', `The ${roleLabel(accountRole)} account can now sign in with this email and password.`);
     } catch (submitError) {
       setError(submitError.message || 'Unable to create account.');
     } finally {
@@ -873,7 +1024,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
     }
   };
   return <>
-    <Header eyebrow="Admin controls" title="Team accounts" subtitle="Create staff or customer accounts with complete contact details." />
+    <Header eyebrow="Admin controls" title="Team accounts" subtitle="Create Barista/Cashier, branch administrator, or customer accounts." />
     <View style={styles.card}>
       <Text style={styles.cardTitle}>New employee or customer</Text>
       <Text style={styles.fieldLabel}>Account type</Text>
@@ -942,8 +1093,13 @@ function Header({ eyebrow, title, subtitle }) {
 function Stat({ label, value, note }) {
   return <View style={styles.stat}><Text style={styles.statLabel}>{label}</Text><Text style={styles.statValue}>{value}</Text><Text style={styles.statNote}>{note}</Text></View>;
 }
-function AdminOverview({ summary, onNavigate }) {
-  return <><Header eyebrow="Head office · Operations" title="Branch overview" subtitle="Live operating metrics across your selected branch scope." /><View style={styles.stats}><Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} /><Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" /><Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} /><Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`Inventory value ${money(summary?.inventoryValue || 0)}`} /></View><View style={styles.card}><Text style={styles.cardTitle}>Head office controls</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('branches')}><Text>Manage branches</Text></Pressable><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('reports')}><Text>Open consolidated reports</Text></Pressable><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('team')}><Text>Manage employee accounts</Text></Pressable></View></>;
+function AdminOverview({ summary, onNavigate, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
+  return <>
+    <Header eyebrow="Operations" title="Overview" subtitle="Live operating metrics and sales reports for your selected branch scope." />
+    <View style={styles.stats}><Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} /><Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" /><Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} /><Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`Inventory value ${money(summary?.inventoryValue || 0)}`} /></View>
+    <View style={styles.card}><Text style={styles.cardTitle}>Workspace shortcuts</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('branches')}><Text>Manage branches</Text></Pressable><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('team')}><Text>Manage employee accounts</Text></Pressable></View>
+    <Reports summary={summary} branches={branches} selectedBranchId={selectedBranchId} onSelectBranch={onSelectBranch} isHeadAdmin={isHeadAdmin} />
+  </>;
 }
 function Branches({ branches, selectedBranchId, onSelectBranch, onCreateBranch, onToggleBranch }) {
   const [name, setName] = useState('');
@@ -1002,23 +1158,58 @@ function BranchPicker({ branches, selectedBranchId, onSelectBranch }) {
   </>;
 }
 
-function AuditLogs({ branchId }) {
+function AuditLogs({ branchId, demoLogs }) {
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setLogs(demoLogs.filter((entry) => !branchId || entry.branch_id === branchId)
+        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()));
+      return;
+    }
     let active = true;
-    requestApi(`/api/admin/audit${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`).then((data) => {
-      if (active) setLogs(data);
-    }).catch((loadError) => { if (active) setError(loadError.message || 'Unable to load audit logs.'); });
-    return () => { active = false; };
-  }, [branchId]);
+    const refreshLogs = async () => {
+      try {
+        const data = await requestApi(`/api/admin/audit${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`);
+        if (active) {
+          setLogs(data);
+          setError('');
+        }
+      } catch (loadError) {
+        if (active) setError(loadError.message || 'Unable to load audit logs.');
+      }
+    };
+    refreshLogs();
+    const timer = setInterval(refreshLogs, 10000);
+    const channel = supabase.channel(`audit-${branchId || 'all'}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, refreshLogs)
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' && active) console.error('Live activity-log updates are unavailable; periodic refresh remains enabled.');
+      });
+    return () => {
+      active = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel).catch((error) => console.error('Audit subscription cleanup failure:', error.message));
+    };
+  }, [branchId, demoLogs]);
   return <>
     <Header eyebrow="Administrative oversight" title="Activity log" subtitle="Recent account, branch, inventory, POS, and loyalty actions." />
+    {!supabase && <DemoModeNotice message="Activity in demo mode is only stored in this app session. It is not saved to the shared database." />}
     <View style={styles.card}>{error ? <Text style={styles.formError}>{error}</Text> : null}
       {logs.length ? logs.map((entry) => <View style={styles.accountRow} key={entry.id}>
-        <View style={styles.flex}><Text style={styles.cardTitle}>{entry.action}</Text><Text style={styles.subtitle}>{entry.profiles?.full_name || 'System'} · {entry.entity_type} {entry.entity_id || ''}</Text><Text style={styles.subtitle}>{new Date(entry.created_at).toLocaleString()}</Text>{Object.keys(entry.details || {}).length > 0 && <Text style={styles.auditDetails}>{JSON.stringify(entry.details)}</Text>}</View>
-        {entry.branch_id ? <Text style={styles.pill}>{entry.branch_id.slice(0, 8)}</Text> : null}
+        <View style={styles.flex}>
+          {entry.action === 'order.completed' ? <>
+            <Text style={styles.cardTitle}>Order #{entry.details.orderId} marked {entry.details.statusChangedTo}</Text>
+            <Text style={styles.subtitle}>Barista: {entry.details.baristaName || entry.profiles?.full_name || 'Staff'}</Text>
+            <Text style={styles.subtitle}>Customer: {entry.details.customerName || 'Walk-in'} · Branch: {entry.details.branchName || 'Branch'}</Text>
+          </> : <>
+            <Text style={styles.cardTitle}>{entry.action}</Text>
+            <Text style={styles.subtitle}>{entry.profiles?.full_name || 'System'} · {entry.entity_type} {entry.entity_id || ''}</Text>
+          </>}
+          <Text style={styles.subtitle}>{new Date(entry.created_at).toLocaleString()}</Text>
+          {entry.action !== 'order.completed' && Object.keys(entry.details || {}).length > 0 && <Text style={styles.auditDetails}>{JSON.stringify(entry.details)}</Text>}
+        </View>
+        {entry.branch_id && entry.action !== 'order.completed' ? <Text style={styles.pill}>{entry.branch_id.slice(0, 8)}</Text> : null}
       </View>) : <Text style={styles.subtitle}>No activity recorded yet.</Text>}
     </View>
   </>;
@@ -1096,9 +1287,8 @@ function LoyaltyAdmin({ onSave }) {
     </View>
   </>;
 }
-function Inventory({ branchId, isHeadAdmin }) {
+function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification, branches: knownBranches }) {
   const [items, setItems] = useState([]);
-  const [branches, setBranches] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [movements, setMovements] = useState([]);
   const [inventoryId, setInventoryId] = useState('');
@@ -1110,33 +1300,36 @@ function Inventory({ branchId, isHeadAdmin }) {
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const branches = knownBranches.filter((branch) => branch.is_active !== false);
+  const lowStockNotifications = notifications.filter((notification) => notification.title === 'Low stock alert');
   const reload = async () => {
     if (!supabase) {
       setItems(products.filter((item) => item.category === 'Inventory').map((item) => ({ id: String(item.id), name: item.name, sku: `INV-${item.id}`, quantity: item.stock, low_stock_threshold: 10, unit_cost: 0, branch_id: branchId || 'demo-lipa' })));
-      setBranches([{ id: 'demo-lipa', name: 'Lipa Branch' }, { id: 'demo-manila', name: 'Manila Branch' }]);
       setTransfers([]); setMovements([]); setLoading(false); return;
     }
     try {
-      const [stock, transferRows, movementRows, branchResult] = await Promise.all([
+      const [stock, transferRows, movementRows] = await Promise.all([
         requestApi(`/api/inventory${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`),
         requestApi('/api/inventory/transfers'),
         requestApi(`/api/inventory/movements${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`),
-        supabase.from('branches').select('id,name').eq('is_active', true).order('name'),
       ]);
       setItems(stock); setInventoryId(stock[0]?.id || ''); setTransfers(transferRows); setMovements(movementRows);
-      if (!branchResult.error) setBranches(branchResult.data);
     } catch (loadError) { setError(loadError.message || 'Unable to load inventory.'); }
     finally { setLoading(false); }
   };
   useEffect(() => { reload(); }, [branchId]);
   const requestTransfer = async () => {
     const item = items.find((stock) => stock.id === inventoryId);
-    if (!item || !toBranchId || Number(quantity) < 1) return setError('Choose an item, destination branch, and quantity.');
+    const transferQuantity = Number(quantity);
+    if (!item || !toBranchId || !Number.isInteger(transferQuantity) || transferQuantity < 1) {
+      return setError('Choose an item, destination branch, and a whole-number quantity.');
+    }
+    if (transferQuantity > item.quantity) return setError(`Only ${item.quantity} units are available at the source branch.`);
     setSaving(true); setError(''); setNotice('');
     try {
-      if (supabase) await requestApi('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({ fromBranchId: item.branch_id, toBranchId, items: [{ inventoryId: item.id, quantity: Number(quantity) }] }) });
-      else setTransfers((current) => [{ id: `demo-transfer-${Date.now()}`, from_branch_id: item.branch_id, to_branch_id: toBranchId, status: 'requested', inventory_transfer_items: [{ inventory_id: item.id, quantity: Number(quantity) }] }, ...current]);
-      setNotice('Transfer request submitted for head-admin approval.');
+      if (supabase) await requestApi('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({ fromBranchId: item.branch_id, toBranchId, items: [{ inventoryId: item.id, quantity: transferQuantity }] }) });
+      else setTransfers((current) => [{ id: `demo-transfer-${Date.now()}`, from_branch_id: item.branch_id, to_branch_id: toBranchId, status: isHeadAdmin ? 'completed' : 'requested', inventory_transfer_items: [{ inventory_id: item.id, quantity: transferQuantity }] }, ...current]);
+      setNotice(isHeadAdmin ? 'Stock sent to the destination branch.' : 'Transfer request submitted for head-admin approval.');
       await reload();
     } catch (requestError) { setError(requestError.message || 'Unable to request transfer.'); }
     finally { setSaving(false); }
@@ -1163,16 +1356,24 @@ function Inventory({ branchId, isHeadAdmin }) {
   return <>
     <Header eyebrow="Branch operations" title="Inventory" subtitle="Monitor branch stock, cost, and inter-branch movement." />
     {error ? <Text style={styles.formError}>{error}</Text> : null}{notice ? <Text style={styles.successText}>{notice}</Text> : null}
+    {isHeadAdmin && lowStockNotifications.length > 0 && <View style={styles.card}>
+      <Text style={styles.cardTitle}>Low-stock alerts · {lowStockNotifications.length}</Text>
+      {lowStockNotifications.map((notification) => <View style={styles.notification} key={notification.id}>
+        <View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View>
+        <Text style={styles.subtitle}>{notification.message}</Text>
+        <Text style={styles.guestHint}>{new Date(notification.created_at).toLocaleString()}</Text>
+      </View>)}
+    </View>}
     <View style={styles.stats}><Stat label="Tracked items" value={String(items.length)} note="At selected branches" /><Stat label="Low stock" value={String(items.filter((item) => item.quantity <= item.low_stock_threshold).length)} note="At or below threshold" /><Stat label="Stock value" value={money(items.reduce((sum, item) => sum + Number(item.unit_cost || 0) * item.quantity, 0))} note="Based on recorded cost" /></View>
     <View style={styles.card}><Text style={styles.cardTitle}>Stock by branch</Text>{loading ? <Text style={styles.subtitle}>Loading inventory...</Text> : items.map((item) => <View style={styles.accountRow} key={item.id}><View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.sku} · {item.branches?.name || branches.find((branch) => branch.id === item.branch_id)?.name || 'Branch stock'}</Text></View><Text style={item.quantity <= item.low_stock_threshold ? styles.warning : styles.price}>{item.quantity} units</Text><View style={styles.quantity}><Pressable onPress={() => adjustStock(item, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Pressable onPress={() => adjustStock(item, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View></View>)}</View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Request stock transfer</Text>
+    <View style={styles.card}><Text style={styles.cardTitle}>{isHeadAdmin ? 'Send stock to another branch' : 'Request stock transfer'}</Text>
       <Text style={styles.fieldLabel}>Stock item</Text>
       <View style={styles.roleDropdown}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: stockMenuOpen }} onPress={() => setStockMenuOpen((open) => !open)} style={styles.roleDropdownTrigger}>
-          <Text style={styles.roleDropdownValue}>{selectedItem ? `${selectedItem.name} · ${selectedItem.quantity} available` : 'Select inventory item'}</Text>
+          <Text style={styles.roleDropdownValue}>{selectedItem ? `${selectedItem.name} · ${branches.find((branch) => branch.id === selectedItem.branch_id)?.name || 'Source branch'} · ${selectedItem.quantity} available` : 'Select inventory item'}</Text>
           <Text style={styles.roleDropdownChevron}>{stockMenuOpen ? '▲' : '▼'}</Text>
         </Pressable>
-        {stockMenuOpen && <View style={styles.roleDropdownMenu}>{items.map((item) => <Pressable key={item.id} onPress={() => { setInventoryId(item.id); setStockMenuOpen(false); }} style={[styles.roleDropdownOption, inventoryId === item.id && styles.roleDropdownOptionSelected]}><Text style={[styles.roleDropdownOptionText, inventoryId === item.id && styles.roleDropdownOptionTextSelected]}>{item.name} · {item.quantity} available</Text></Pressable>)}</View>}
+        {stockMenuOpen && <View style={styles.roleDropdownMenu}>{items.map((item) => <Pressable key={item.id} onPress={() => { setInventoryId(item.id); setStockMenuOpen(false); }} style={[styles.roleDropdownOption, inventoryId === item.id && styles.roleDropdownOptionSelected]}><Text style={[styles.roleDropdownOptionText, inventoryId === item.id && styles.roleDropdownOptionTextSelected]}>{item.name} · {branches.find((branch) => branch.id === item.branch_id)?.name || 'Source branch'} · {item.quantity} available</Text></Pressable>)}</View>}
       </View>
       <Text style={styles.fieldLabel}>Destination branch</Text>
       <View style={styles.roleDropdown}>
@@ -1183,14 +1384,14 @@ function Inventory({ branchId, isHeadAdmin }) {
         {destinationMenuOpen && <View style={styles.roleDropdownMenu}>{branches.filter((branch) => branch.id !== selectedItem?.branch_id).map((branch) => <Pressable key={branch.id} onPress={() => { setToBranchId(branch.id); setDestinationMenuOpen(false); }} style={[styles.roleDropdownOption, toBranchId === branch.id && styles.roleDropdownOptionSelected]}><Text style={[styles.roleDropdownOptionText, toBranchId === branch.id && styles.roleDropdownOptionTextSelected]}>{branch.name}</Text></Pressable>)}</View>}
       </View>
       <TextInput value={quantity} onChangeText={setQuantity} placeholder="Quantity" keyboardType="number-pad" style={styles.authInput} />
-      <Pressable disabled={saving} style={[styles.buttonDark, saving && styles.disabled]} onPress={requestTransfer}><Text style={styles.buttonText}>{saving ? 'Submitting...' : 'Request transfer'}</Text></Pressable>
+      <Pressable disabled={saving} style={[styles.buttonDark, saving && styles.disabled]} onPress={requestTransfer}><Text style={styles.buttonText}>{saving ? (isHeadAdmin ? 'Sending...' : 'Submitting...') : isHeadAdmin ? 'Send stock' : 'Request transfer'}</Text></Pressable>
     </View>
     <View style={styles.card}><Text style={styles.cardTitle}>Transfer requests</Text>{transfers.length ? transfers.map((transfer) => <View style={styles.accountRow} key={transfer.id}><View style={styles.flex}><Text style={styles.cardTitle}>{branches.find((branch) => branch.id === transfer.from_branch_id)?.name || 'Source'} → {branches.find((branch) => branch.id === transfer.to_branch_id)?.name || 'Destination'}</Text><Text style={styles.subtitle}>{transfer.status} · {transfer.inventory_transfer_items?.length || 0} item(s)</Text></View>{isHeadAdmin && transfer.status === 'requested' && <View style={styles.queueActions}><Pressable style={styles.smallButton} onPress={() => reviewTransfer(transfer.id, 'approved')}><Text style={styles.buttonText}>Approve</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => reviewTransfer(transfer.id, 'rejected')}><Text style={styles.deleteButtonText}>Reject</Text></Pressable></View>}</View>) : <Text style={styles.subtitle}>No transfer requests.</Text>}</View>
     <View style={styles.card}><Text style={styles.cardTitle}>Recent stock movement</Text>{movements.length ? movements.slice(0, 30).map((movement) => <View style={styles.accountRow} key={movement.id}><View style={styles.flex}><Text style={styles.cardTitle}>{movement.inventory?.name || 'Stock item'} · {movement.movement_type.replaceAll('_', ' ')}</Text><Text style={styles.subtitle}>{movement.branches?.name || 'Branch'} · {new Date(movement.created_at).toLocaleString()}</Text></View><Text style={movement.quantity_delta > 0 ? styles.price : styles.warning}>{movement.quantity_delta > 0 ? '+' : ''}{movement.quantity_delta}</Text></View>) : <Text style={styles.subtitle}>Stock activity will appear here.</Text>}</View>
   </>;
 }
-function Products({ visibleProducts, search, setSearch, onAdd, cart = [], onChangeQuantity, onPlaceOrder, checkoutNotice, checkoutError }) {
-  return <><Header eyebrow="Catalog management" title="Products" subtitle="Items available to customers and the POS." /><TextInput value={search} onChangeText={setSearch} placeholder="Search coffee, matcha, pastry, or SKU" style={styles.input} /><View style={styles.productGrid}>{visibleProducts.map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View>{onChangeQuantity && <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} schedulePickup />}{checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}{checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}</>;
+function Products({ visibleProducts, search, setSearch, onAdd, checkoutNotice, checkoutError }) {
+  return <><Header eyebrow="Cafe menu" title="Menu" subtitle="Choose your favorites and add them to your cart." />{checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}{checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}<TextInput value={search} onChangeText={setSearch} placeholder="Search coffee, matcha, or pastry" style={styles.input} /><View style={styles.productGrid}>{visibleProducts.map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View></>;
 }
 function ProductCard({ product, onAdd, onDelete }) {
   const isDrink = ['coffee', 'cold', 'matcha'].includes(String(product.category).toLowerCase());
@@ -1600,9 +1801,8 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
     {customerInfo && <Text style={styles.successText}>{customerInfo.full_name} · {customerInfo.reward_points} points</Text>}
     {customerLookupError ? <Text style={styles.formError}>{customerLookupError}</Text> : null}
     {cart.length ? cart.map((item) => <View style={styles.cartRow} key={item.id}>
-      <View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.promoLabel || `${money(item.price)} each${item.customization ? ` · ${item.customization.size === 'large' ? 'Large' : 'Regular'}, ${item.customization.milk === 'oat' ? 'Oat milk' : 'Dairy'}, ${item.customization.sweetness}% sweet${item.customization.extraEspresso ? ', extra shot' : ''}` : ''}`}</Text></View>
-      {!item.isPromo && <View style={styles.quantity}><Pressable onPress={() => onChangeQuantity(item.id, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable onPress={() => onChangeQuantity(item.id, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}
-      <Text style={styles.price}>{money(item.price * item.quantity)}</Text>
+      <View><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.promoLabel || `${money(item.price)} each${item.customization ? ` · ${item.customization.size === 'large' ? 'Large' : 'Regular'}, ${item.customization.milk === 'oat' ? 'Oat milk' : 'Dairy'}, ${item.customization.sweetness}% sweet${item.customization.extraEspresso ? ', extra shot' : ''}` : ''}`}</Text></View>
+      <View style={styles.cartLineFooter}>{!item.isPromo && <View style={styles.quantity}><Pressable accessibilityRole="button" accessibilityLabel={`Remove one ${item.name}`} onPress={() => onChangeQuantity(item.id, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Add one ${item.name}`} onPress={() => onChangeQuantity(item.id, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}<Text style={styles.price}>{money(item.price * item.quantity)}</Text></View>
     </View>) : <Text style={styles.subtitle}>Your cart is empty. Tap Add to order to get started.</Text>}
     {promotionLabel ? <Text style={styles.successText}>Promotion applied: {promotionLabel}</Text> : null}
     {discountTotal > 0 && <Text style={styles.promoPrice}>Discount: -{money(discountTotal)}</Text>}
@@ -1614,29 +1814,69 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
         {pickupSlots.map((slot) => <OptionChoice key={slot.value} label={slot.label} selected={pickupAt === slot.value} onPress={() => setPickupAt(slot.value)} />)}
       </View>
     </View>}
+    <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Subtotal</Text><Text style={styles.price}>{money(subtotal)}</Text></View>
+    {discountTotal > 0 && <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Discount</Text><Text style={styles.price}>−{money(discountTotal)}</Text></View>}
     <Text style={styles.total}>Total: {money(total)}</Text>
     <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
   </View>;
 }
-function Queue({ orders, onUpdateStatus }) {
+function Queue({ orders, onUpdateStatus, loadError }) {
+  const [expandedCustomer, setExpandedCustomer] = useState(null);
   const sortedOrders = [...orders].sort((left, right) => {
     const leftTime = new Date(left.scheduled_pickup_at || left.estimated_pickup_at || left.created_at || 0).getTime();
     const rightTime = new Date(right.scheduled_pickup_at || right.estimated_pickup_at || right.created_at || 0).getTime();
     return leftTime - rightTime;
   });
   const upcomingOrders = sortedOrders.filter((order) => !['Completed', 'Cancelled'].includes(order.status));
+  const customerGroups = sortedOrders.reduce((groups, order) => {
+    const customerKey = order.customer_id || order.customerId || order.customerEmail || order.customer_email
+      || (order.customer && order.customer !== 'Walk-in' ? order.customer : `walk-in-${order.id}`);
+    const group = groups.find((item) => item.key === customerKey);
+    if (group) group.orders.push(order);
+    else groups.push({ key: customerKey, name: order.customer || 'Walk-in', orders: [order] });
+    return groups;
+  }, []);
   return <>
-    <Header eyebrow="Service choreography" title="Order queue" subtitle="Orders are sorted by pickup time so staff can anticipate busy periods." />
+    <Header eyebrow="Service choreography" title="Order queue" subtitle="Tap a customer name to expand their orders. Orders are sorted by pickup time." />
+    {!supabase && <DemoModeNotice message="Demo mode: orders are not shared with other devices. Configure the client's Supabase credentials and API URL to use the live queue." />}
+    {loadError ? <Text style={styles.formError}>Unable to sync orders: {loadError}</Text> : null}
     {upcomingOrders.length > 0 && <View style={styles.card}><Text style={styles.cardTitle}>Upcoming pickups</Text>{upcomingOrders.slice(0, 8).map((order) => <Text key={`pickup-${order.id}`} style={styles.subtitle}>{pickupLabel(order) || 'Pickup time pending'} · #{order.id} · {order.customer}</Text>)}</View>}
-    {sortedOrders.length ? sortedOrders.map((order) => <View style={styles.listCard} key={order.id}>
-      <View style={styles.flex}><Text style={styles.cardTitle}>#{order.id} · {order.customer}</Text><Text style={styles.subtitle}>{order.items} · {order.channel}</Text>{pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}</View>
-      <View style={styles.queueActions}><Text style={styles.pill}>{order.status}</Text>
-        {order.status === 'New' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Preparing')}><Text style={styles.buttonText}>Start preparing</Text></Pressable>}
-        {order.status === 'Preparing' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Ready for pickup')}><Text style={styles.buttonText}>Mark ready</Text></Pressable>}
-        {order.status === 'Ready for pickup' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Completed')}><Text style={styles.buttonText}>Complete pickup</Text></Pressable>}
-      </View>
-    </View>) : <Text style={styles.subtitle}>No orders are waiting in the queue.</Text>}
+    {customerGroups.length ? customerGroups.map((group) => {
+      const isExpanded = expandedCustomer === group.key;
+      const activeOrders = group.orders.filter((order) => !['Completed', 'Cancelled'].includes(order.status)).length;
+      return <View style={styles.queueCustomerGroup} key={group.key}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isExpanded }}
+          onPress={() => setExpandedCustomer(isExpanded ? null : group.key)}
+          style={styles.queueCustomerHeader}
+        >
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>{group.name}</Text>
+            <Text style={styles.subtitle}>{group.orders.length} order{group.orders.length === 1 ? '' : 's'} · {activeOrders} active</Text>
+          </View>
+          <Text style={styles.roleDropdownChevron}>{isExpanded ? '▲' : '▼'}</Text>
+        </Pressable>
+        {isExpanded && <View style={styles.queueCustomerOrders}>
+          {group.orders.map((order) => <View style={styles.queueOrder} key={order.id}>
+            <View style={styles.flex}>
+              <Text style={styles.cardTitle}>Order #{order.id}</Text>
+              <Text style={styles.subtitle}>{order.items} · {order.channel}</Text>
+              {pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}
+            </View>
+            <View style={styles.queueActions}><Text style={styles.pill}>{order.status}</Text>
+              {order.status === 'New' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Preparing')}><Text style={styles.buttonText}>Start preparing</Text></Pressable>}
+              {order.status === 'Preparing' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Ready for pickup')}><Text style={styles.buttonText}>Mark ready</Text></Pressable>}
+              {order.status === 'Ready for pickup' && <Pressable style={styles.smallButton} onPress={() => onUpdateStatus(order.id, 'Completed')}><Text style={styles.buttonText}>Complete pickup</Text></Pressable>}
+            </View>
+          </View>)}
+        </View>}
+      </View>;
+    }) : <Text style={styles.subtitle}>No orders are waiting in the queue.</Text>}
   </>;
+}
+function DemoModeNotice({ message }) {
+  return <View style={styles.notification}><Text style={styles.notificationTitle}>Demo mode</Text><Text style={styles.subtitle}>{message}</Text></View>;
 }
 function Receipts({ orders }) {
   return <><Header eyebrow="Service history" title="Receipts" subtitle="Recent counter and online orders." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.customer} · {order.items}</Text>{order.promotionTitle && <Text style={styles.successText}>Promotion: {order.promotionTitle}</Text>}{Number(order.discount_total || order.discountTotal || 0) > 0 && <Text style={styles.warning}>Discount: -{money(order.discount_total || order.discountTotal)}</Text>}</View><Text style={styles.price}>{money(order.total)}</Text></View>)}</>;
@@ -1668,8 +1908,8 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
     </View>
   </>;
 }
-function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, checkoutError, user, orders, notifications, onDismissNotification, onNavigate, onAdd, cart, onChangeQuantity, onPlaceOrder }) {
-  const customerOrders = orders.filter((order) => order.customerEmail === user.email);
+function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, checkoutError, user, orders, notifications, onDismissNotification, onNavigate, onAdd }) {
+  const customerOrders = orders.filter((order) => order.customerId === user.id || order.customer_id === user.id || (user.email && order.customerEmail === user.email));
   const readyOrder = customerOrders.find((order) => order.status === 'Ready for pickup');
   const activeOrder = customerOrders.find((order) => !['Completed', 'Cancelled'].includes(order.status));
   const readyNotification = notifications.find((notification) => notification.title?.toLowerCase().includes('ready'));
@@ -1683,7 +1923,9 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
   const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Lipa Branch';
   return <>
     <Header eyebrow={`360 Degrees Specialty Cafe · ${branchName}`} title={`Good morning, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
-    {user.customerCode && <View style={styles.customerIdCard}><QRCode value={user.customerCode} size={108} /><View style={styles.flex}><Text style={styles.eyebrow}>Customer ID</Text><Text style={styles.customerId}>{user.customerCode}</Text><Text style={styles.subtitle}>Show this code at checkout to earn points.</Text></View></View>}
+    {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
+    {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
+    {user.customerCode && <View style={styles.customerIdCard}><QRCode value={user.customerCode} size={108} /><View style={styles.flex}><Text style={styles.eyebrow}>{user.role === 'guest' ? 'Guest ID' : 'Customer ID'}</Text><Text style={styles.customerId}>{user.customerCode}</Text><Text style={styles.subtitle}>{user.role === 'guest' ? 'Temporary account · guest orders do not earn or redeem loyalty points.' : 'Show this code at checkout to earn points.'}</Text>{user.role === 'guest' && user.guestExpiresAt ? <Text style={styles.guestHint}>Expires {new Date(user.guestExpiresAt).toLocaleString()}</Text> : null}</View></View>}
     {(readyOrder || readyNotification) && <View style={styles.notification}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text>{readyNotification && <Pressable onPress={() => onDismissNotification(readyNotification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable>}</View><Text style={styles.subtitle}>{readyNotification?.message || `Order #${readyOrder.id} is ready at ${branchName}.`}</Text></View>}
     {activeOrder && <View style={styles.card}><Text style={styles.cardTitle}>Order tracking · #{activeOrder.id}</Text><Text style={styles.pill}>{activeOrder.status}</Text>{pickupLabel(activeOrder) ? <Text style={styles.successText}>{pickupLabel(activeOrder)}</Text> : null}<Text style={styles.subtitle}>{activeOrder.items}</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('orders')}><Text>View order details</Text></Pressable></View>}
     {notifications.filter((notification) => !notification.title?.toLowerCase().includes('ready')).slice(0, 3).map((notification) => <View style={styles.notification} key={notification.id}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View><Text style={styles.subtitle}>{notification.message}</Text></View>)}
@@ -1708,13 +1950,10 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
       {customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>)}
       <Pressable style={styles.buttonSecondary} onPress={() => onNavigate('menu')}><Text>See menu</Text></Pressable>
     </View>
-    <CartPanel cart={cart} onChangeQuantity={onChangeQuantity} onPlaceOrder={onPlaceOrder} schedulePickup />
-    {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
-    {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
   </>;
 }
 function Orders({ orders, user }) {
-  const customerOrders = orders.filter((order) => order.customerEmail === user.email);
+  const customerOrders = orders.filter((order) => order.customerId === user.id || order.customer_id === user.id || (user.email && order.customerEmail === user.email));
   return <><Header eyebrow="Customer workspace" title="My orders" subtitle="Track order preparation and pickup times." />{customerOrders.length ? customerOrders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.items}</Text>{pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}</View><View><Text style={styles.pill}>{order.status}</Text><Text style={styles.price}>{money(order.total)}</Text></View></View>) : <Text style={styles.subtitle}>Your orders will appear here after checkout.</Text>}</>;
 }
 function Wallet({ user, onRedeem }) {
@@ -1897,6 +2136,9 @@ const styles = StyleSheet.create({
   passwordToggle: { paddingHorizontal: 14, paddingVertical: 13 },
   passwordToggleText: { color: '#b94f2b', fontSize: 12, fontWeight: '700' },
   authButton: { backgroundColor: '#d9683c', padding: 14, borderRadius: 9, alignItems: 'center', marginTop: 6 },
+  guestButton: { borderWidth: 1, borderColor: '#e9e0d7', padding: 12, borderRadius: 9, alignItems: 'center', marginTop: 12 },
+  guestButtonText: { color: '#5f4031', fontSize: 13, fontWeight: '700' },
+  guestHint: { color: '#82766e', fontSize: 10, marginTop: 5 },
   authSwitch: { alignItems: 'center', padding: 14 },
   authSwitchText: { color: '#b94f2b', fontSize: 13, fontWeight: '700' },
   formError: { color: '#b33c2f', fontSize: 12, marginBottom: 8 },
@@ -1947,6 +2189,7 @@ const styles = StyleSheet.create({
   topbarSignOut: { color: '#b94f2b', fontSize: 11, fontWeight: '700' },
   content: { padding: 28, maxWidth: 1440, width: '100%' },
   contentMobile: { padding: 16 },
+  contentWithCart: { paddingBottom: 100 },
   heading: { marginBottom: 22 },
   eyebrow: { color: '#b94f2b', fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { color: '#30251f', fontFamily: 'Georgia', fontSize: 34, marginTop: 7, marginBottom: 6 },
@@ -1960,6 +2203,10 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#30251f', fontSize: 14, fontWeight: '700', marginBottom: 7 },
   forecastTitle: { color: '#fff', backgroundColor: '#33241e', padding: 16, fontFamily: 'Georgia', fontSize: 20, marginVertical: 12, borderRadius: 10 },
   listCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 15, marginBottom: 10 },
+  queueCustomerGroup: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, marginBottom: 10, overflow: 'hidden' },
+  queueCustomerHeader: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15 },
+  queueCustomerOrders: { paddingHorizontal: 14, paddingBottom: 8, borderTopWidth: 1, borderTopColor: '#f0ebe5' },
+  queueOrder: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#f0ebe5' },
   listRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', color: '#30251f', fontSize: 12 },
   warning: { color: '#a65c2f', fontWeight: '700' },
   flex: { flex: 1 },
@@ -1990,10 +2237,12 @@ const styles = StyleSheet.create({
   photoPreview: { width: '100%', height: 150 },
   photoPickerText: { color: '#b94f2b', fontSize: 13, fontWeight: '700' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 },
-  cartRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 10 },
+  cartRow: { gap: 8, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
+  cartLineFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 40 },
+  cartSubtotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   accountRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
   quantity: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  quantityButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3eee8', borderRadius: 14 },
+  quantityButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3eee8', borderRadius: 20 },
   queueActions: { alignItems: 'flex-end', gap: 8 },
   smallButton: { backgroundColor: '#d9683c', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 7 },
   notification: { backgroundColor: '#e7eddf', borderWidth: 1, borderColor: '#bdcdb0', borderRadius: 12, padding: 16, marginBottom: 16 },
@@ -2003,6 +2252,13 @@ const styles = StyleSheet.create({
   redemptionCode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 10, marginTop: 8, backgroundColor: '#fff', borderRadius: 8 },
   customerIdCard: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 16 },
   customerId: { color: '#30251f', fontSize: 16, fontWeight: '700', marginVertical: 5 },
+  cartFloatingButton: { position: 'absolute', right: 20, bottom: 18, zIndex: 5, minHeight: 52, minWidth: 126, backgroundColor: '#33241e', borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  cartFloatingText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cartModalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12, backgroundColor: 'rgba(20, 13, 10, 0.62)' },
+  cartModalSheet: { width: '100%', maxWidth: 560, maxHeight: '92%', backgroundColor: '#fbf8f3', borderRadius: 18, padding: 14 },
+  cartModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 },
+  closeButtonLight: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: '#f0e9e1' },
+  closeIconLight: { color: '#5e5149', fontSize: 26, lineHeight: 28 },
   customerIdRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   customerIdInput: { flex: 1, marginBottom: 0 },
   scannerBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(20, 13, 10, 0.65)' },

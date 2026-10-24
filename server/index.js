@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const { randomBytes, randomUUID } = require('node:crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -9,7 +10,9 @@ const PORT = Number(process.env.PORT || 3000);
 app.use(cors());
 app.use(express.json());
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
@@ -50,6 +53,10 @@ async function requireUser(req, res, roles = []) {
   const profile = await getProfile(user.id, accessToken);
   if (profile.is_active === false) {
     res.status(403).json({ error: 'This account is inactive. Contact a head administrator.' });
+    return null;
+  }
+  if (profile.role === 'guest' && (!profile.guest_expires_at || Date.parse(profile.guest_expires_at) <= Date.now())) {
+    res.status(403).json({ error: 'This guest account has expired. Start a new guest session to continue.' });
     return null;
   }
   if (profile.branch_id && profile.role !== 'customer') {
@@ -121,6 +128,45 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+app.post('/api/auth/guest', async (req, res) => {
+  let userId;
+  try {
+    if (!supabaseAdmin) return res.status(503).json({ error: 'Guest accounts require a server-only service-role key.' });
+    const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim() : '';
+    if (fullName.length < 2 || fullName.length > 100) {
+      return res.status(400).json({ error: 'Enter your name (2–100 characters) before continuing as a guest.' });
+    }
+    const guestId = `GUEST-${randomUUID().toUpperCase()}`;
+    const email = `${guestId.toLowerCase()}@guest.360degrees.cafe`;
+    const password = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    });
+    if (createError) throw createError;
+    userId = created.user.id;
+    const { data: profile, error: profileError } = await supabaseAdmin.from('profiles')
+      .update({ full_name: fullName, role: 'guest', customer_code: guestId, guest_expires_at: expiresAt })
+      .eq('id', userId)
+      .select('id,full_name,email,role,customer_code,guest_expires_at')
+      .single();
+    if (profileError) throw profileError;
+    const { data: signedIn, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) throw signInError;
+    res.status(201).json({ session: signedIn.session, profile });
+  } catch (error) {
+    if (userId && supabaseAdmin) {
+      const { error: cleanupError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      if (cleanupError) console.error('Guest account cleanup failure:', cleanupError.message);
+    }
+    console.error('Guest account creation failure:', error.message);
+    res.status(500).json({ error: 'Unable to start a guest account.' });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -180,6 +226,22 @@ app.get('/api/menu', async (req, res) => {
   } catch (err) {
     console.error("Menu lookup failure:", err.message);
     res.status(500).json({ error: "Failed to load menu items" });
+  }
+});
+
+app.get('/api/branches', async (req, res) => {
+  try {
+    const result = await requireUser(req, res);
+    if (!result) return;
+    const { data, error } = await (supabaseAdmin || supabase).from('branches')
+      .select('id,name,city,address,is_active')
+      .eq('is_active', true)
+      .order('name');
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Customer branch lookup failure:', error.message);
+    res.status(500).json({ error: 'Unable to load active branches.' });
   }
 });
 
@@ -273,17 +335,22 @@ app.get('/api/admin/reports/summary', async (req, res) => {
 
 app.get('/api/admin/audit', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['admin', 'head_admin']);
+    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin']);
     if (!result) return;
     let query = (supabaseAdmin || supabase).from('activity_logs')
       .select('*, profiles(full_name,email)').order('created_at', { ascending: false }).limit(200);
-    if (req.query.branchId) query = query.eq('branch_id', req.query.branchId);
+    if (result.profile.role === 'branch_admin') {
+      if (!result.profile.branch_id) return res.status(403).json({ error: 'Your account is not assigned to a branch.' });
+      query = query.eq('branch_id', result.profile.branch_id);
+    } else if (req.query.branchId) {
+      query = query.eq('branch_id', req.query.branchId);
+    }
     const { data, error } = await query;
     if (error) throw error;
     res.json(data);
   } catch (error) {
     console.error('Audit log lookup failure:', error.message);
-    res.status(500).json({ error: 'Unable to load audit logs.' });
+    res.status(500).json({ error: error.message || 'Unable to load audit logs.' });
   }
 });
 
@@ -295,9 +362,7 @@ app.post('/api/admin/accounts', async (req, res) => {
     const { fullName, email, password, role, contactNumber, address } = req.body;
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const headAdmin = ['admin', 'head_admin'].includes(result.profile.role);
-    const allowedRoles = headAdmin
-      ? ['branch_admin', 'cashier', 'barista', 'staff', 'customer']
-      : ['cashier', 'barista', 'staff'];
+    const allowedRoles = headAdmin ? ['branch_admin', 'staff', 'customer'] : ['staff'];
     const branchId = headAdmin ? req.body.branchId || null : result.profile.branch_id;
     if (typeof fullName !== 'string' || !fullName.trim()
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
@@ -348,7 +413,7 @@ app.get('/api/admin/accounts', async (req, res) => {
   try {
     const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin']);
     if (!result) return;
-    let query = (supabaseAdmin || supabase).from('profiles').select('id,full_name,email,role,branch_id,is_active,contact_number,address').order('full_name');
+    let query = (supabaseAdmin || supabase).from('profiles').select('id,full_name,email,role,branch_id,is_active,contact_number,address').neq('role', 'guest').order('full_name');
     if (!['admin', 'head_admin'].includes(result.profile.role)) query = query.eq('branch_id', result.profile.branch_id);
     else if (req.query.branchId) query = query.eq('branch_id', req.query.branchId);
     const { data, error } = await query;
@@ -369,7 +434,7 @@ app.patch('/api/admin/accounts/:id', async (req, res) => {
     if (targetError) throw targetError;
     const headAdmin = ['admin', 'head_admin'].includes(result.profile.role);
     if (['admin', 'head_admin'].includes(target.role)) return res.status(403).json({ error: 'Head administrator accounts cannot be deactivated or reassigned here.' });
-    if (!headAdmin && (target.branch_id !== result.profile.branch_id || !['cashier', 'barista', 'staff'].includes(target.role))) {
+    if (!headAdmin && (target.branch_id !== result.profile.branch_id || target.role !== 'staff')) {
       return res.status(403).json({ error: 'You can only manage employees assigned to your branch.' });
     }
     const updates = {};
@@ -377,7 +442,7 @@ app.patch('/api/admin/accounts/:id', async (req, res) => {
     if (headAdmin && typeof req.body.role === 'string') updates.role = req.body.role;
     if (headAdmin && Object.hasOwn(req.body, 'branchId')) updates.branch_id = req.body.branchId || null;
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a role, branch, or activation change.' });
-    if (updates.role && !['branch_admin', 'cashier', 'barista', 'staff', 'customer'].includes(updates.role)) {
+    if (updates.role && !['branch_admin', 'staff', 'customer'].includes(updates.role)) {
       return res.status(400).json({ error: 'Invalid employee role.' });
     }
     const { data, error } = await supabaseAdmin.from('profiles').update(updates).eq('id', req.params.id)
@@ -458,14 +523,27 @@ app.post('/api/inventory/transfers', async (req, res) => {
     const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'staff']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'Inventory transfers require a service-role key.' });
-    const fromBranchId = ['admin', 'head_admin'].includes(result.profile.role) ? req.body.fromBranchId : result.profile.branch_id;
+    const isHeadAdmin = ['admin', 'head_admin'].includes(result.profile.role);
+    const fromBranchId = isHeadAdmin ? req.body.fromBranchId : result.profile.branch_id;
     const { toBranchId, items } = req.body;
     if (!fromBranchId || !toBranchId || fromBranchId === toBranchId || !Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Choose two different branches and at least one stock item.' });
     }
+    if (items.some((item) => !item || typeof item.inventoryId !== 'string'
+      || !Number.isInteger(item.quantity) || item.quantity < 1)
+      || new Set(items.map((item) => item.inventoryId)).size !== items.length) {
+      return res.status(400).json({ error: 'Each transfer item must have a unique inventory ID and a positive whole-number quantity.' });
+    }
     const { data: branchRows, error: branchError } = await supabaseAdmin.from('branches').select('id,is_active').in('id', [fromBranchId, toBranchId]);
     if (branchError || branchRows.length !== 2 || branchRows.some((branch) => !branch.is_active)) {
       return res.status(400).json({ error: 'Transfers require two active branches.' });
+    }
+    const { data: sourceItems, error: sourceError } = await supabaseAdmin.from('inventory')
+      .select('id,branch_id,quantity').in('id', items.map((item) => item.inventoryId));
+    if (sourceError) throw sourceError;
+    if (sourceItems.length !== items.length || sourceItems.some((stock) => stock.branch_id !== fromBranchId
+      || stock.quantity < items.find((item) => item.inventoryId === stock.id).quantity)) {
+      return res.status(400).json({ error: 'One or more items are unavailable in the source branch or do not have enough stock.' });
     }
     const { data: transfer, error } = await supabaseAdmin.from('inventory_transfers')
       .insert({ from_branch_id: fromBranchId, to_branch_id: toBranchId, requested_by: result.user.id })
@@ -477,14 +555,29 @@ app.post('/api/inventory/transfers', async (req, res) => {
       quantity: item.quantity,
     })));
     if (itemsError) {
-      await supabaseAdmin.from('inventory_transfers').delete().eq('id', transfer.id);
+      const { error: cleanupError } = await supabaseAdmin.from('inventory_transfers').delete().eq('id', transfer.id);
+      if (cleanupError) console.error('Failed stock transfer cleanup failure:', cleanupError.message);
       throw itemsError;
+    }
+    if (isHeadAdmin) {
+      const { data: completedTransfer, error: reviewError } = await supabaseAdmin.rpc('review_inventory_transfer', {
+        p_transfer_id: transfer.id,
+        p_reviewer_id: result.user.id,
+        p_approve: true,
+      });
+      if (reviewError) {
+        const { error: cleanupError } = await supabaseAdmin.from('inventory_transfers').delete().eq('id', transfer.id);
+        if (cleanupError) console.error('Failed stock transfer cleanup failure:', cleanupError.message);
+        throw reviewError;
+      }
+      await logActivity(result.user.id, fromBranchId, 'inventory.transfer_completed', 'inventory_transfer', transfer.id, { toBranchId, items });
+      return res.status(201).json(completedTransfer);
     }
     await logActivity(result.user.id, fromBranchId, 'inventory.transfer_requested', 'inventory_transfer', transfer.id, { toBranchId, items });
     res.status(201).json(transfer);
   } catch (error) {
     console.error('Inventory transfer request failure:', error.message);
-    res.status(400).json({ error: 'Unable to request inventory transfer.' });
+    res.status(400).json({ error: error.message || 'Unable to request inventory transfer.' });
   }
 });
 
@@ -527,11 +620,12 @@ app.patch('/api/inventory/transfers/:id/review', async (req, res) => {
 
 app.post('/api/pos/checkout', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff', 'customer']);
+    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'staff', 'customer', 'guest']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'POS checkout requires a server-only service-role key.' });
     const isHeadAdmin = ['admin', 'head_admin'].includes(result.profile.role);
-    const branchId = isHeadAdmin || result.profile.role === 'customer' ? req.body.branchId || result.profile.branch_id : result.profile.branch_id;
+    const isOnlineCustomer = ['customer', 'guest'].includes(result.profile.role);
+    const branchId = isHeadAdmin || isOnlineCustomer ? req.body.branchId || result.profile.branch_id : result.profile.branch_id;
     if (!branchId || !Array.isArray(req.body.items) || !req.body.items.length) {
       return res.status(400).json({ error: 'Select a branch and add products before charging.' });
     }
@@ -539,17 +633,25 @@ app.post('/api/pos/checkout', async (req, res) => {
     if (pickupAt && (typeof pickupAt !== 'string' || Number.isNaN(Date.parse(pickupAt)))) {
       return res.status(400).json({ error: 'Choose a valid pickup time.' });
     }
-    if (pickupAt && result.profile.role !== 'customer') {
+    if (pickupAt && !['customer', 'guest'].includes(result.profile.role)) {
       return res.status(400).json({ error: 'Scheduled pickup is available for customer orders.' });
     }
-    const { data, error } = await supabaseAdmin.rpc('process_customized_pos_checkout', {
+    if (result.profile.role === 'guest' && req.body.channel && req.body.channel !== 'online') {
+      return res.status(400).json({ error: 'Guest accounts can only place online orders.' });
+    }
+    const checkoutArgs = {
       p_actor_id: result.user.id,
       p_branch_id: branchId,
-      p_customer_code: result.profile.role === 'customer' ? result.profile.customer_code : req.body.customerCode || null,
       p_items: req.body.items,
-      p_channel: result.profile.role === 'customer' ? 'online' : 'counter',
       p_pickup_at: pickupAt,
-    });
+    };
+    const { data, error } = result.profile.role === 'guest'
+      ? await supabaseAdmin.rpc('process_guest_checkout', { ...checkoutArgs, p_guest_id: result.user.id })
+      : await supabaseAdmin.rpc('process_customized_pos_checkout', {
+        ...checkoutArgs,
+        p_customer_code: result.profile.role === 'customer' ? result.profile.customer_code : req.body.customerCode || null,
+        p_channel: result.profile.role === 'customer' ? 'online' : 'counter',
+      });
     if (error) throw error;
     await logActivity(result.user.id, branchId, 'pos.checkout', 'order', data.order.id, { total: data.order.total, promotion: data.promotion?.id, customerId: data.order.customer_id });
     res.status(201).json(data);
@@ -561,7 +663,7 @@ app.post('/api/pos/checkout', async (req, res) => {
 
 app.get('/api/pos/customers/:code', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff']);
+    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'staff']);
     if (!result) return;
     const { data, error } = await (supabaseAdmin || supabase).from('profiles')
       .select('id,full_name,customer_code,reward_points,is_active')
@@ -592,7 +694,7 @@ app.post('/api/loyalty/redeem', async (req, res) => {
 
 app.post('/api/loyalty/validate-redemption', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff']);
+    const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'staff']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'Reward verification requires a server-only service-role key.' });
     const code = typeof req.body.code === 'string' ? req.body.code.trim().toUpperCase() : '';
@@ -628,7 +730,7 @@ app.get('/api/orders', async (req, res) => {
       .from('orders')
       .select('*, order_items(*), promotions(title), profiles!orders_customer_id_fkey(full_name,email)')
       .order('created_at', { ascending: false });
-    if (result.profile.role === 'customer') query = query.eq('customer_id', result.user.id);
+    if (['customer', 'guest'].includes(result.profile.role)) query = query.eq('customer_id', result.user.id);
     else if (!['admin', 'head_admin'].includes(result.profile.role)) query = query.eq('branch_id', result.profile.branch_id);
     else if (req.query.branchId) query = query.eq('branch_id', req.query.branchId);
     const { data, error } = await query;
@@ -636,25 +738,33 @@ app.get('/api/orders', async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Order lookup failure:', error.message);
-    res.status(500).json({ error: 'Unable to load orders.' });
+    res.status(500).json({ error: error.message || 'Unable to load orders.' });
   }
 });
 
 app.post('/api/orders', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['customer', 'staff', 'admin']);
+    const result = await requireUser(req, res, ['customer', 'guest', 'staff', 'admin']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'Order checkout requires a server-only service-role key.' });
     const { branchId, items, pickupAt } = req.body;
     if (!branchId || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'A branch and at least one item are required.' });
-    const { data, error } = await supabaseAdmin.rpc('process_customized_pos_checkout', {
-      p_actor_id: result.user.id,
-      p_branch_id: branchId,
-      p_customer_code: result.profile.customer_code,
-      p_items: items,
-      p_channel: 'online',
-      p_pickup_at: pickupAt || null,
-    });
+    const { data, error } = result.profile.role === 'guest'
+      ? await supabaseAdmin.rpc('process_guest_checkout', {
+        p_actor_id: result.user.id,
+        p_guest_id: result.user.id,
+        p_branch_id: branchId,
+        p_items: items,
+        p_pickup_at: pickupAt || null,
+      })
+      : await supabaseAdmin.rpc('process_customized_pos_checkout', {
+        p_actor_id: result.user.id,
+        p_branch_id: branchId,
+        p_customer_code: result.profile.customer_code,
+        p_items: items,
+        p_channel: 'online',
+        p_pickup_at: pickupAt || null,
+      });
     if (error) throw error;
     res.status(201).json(data);
   } catch (error) {
@@ -665,19 +775,24 @@ app.post('/api/orders', async (req, res) => {
 
 app.patch('/api/orders/:id/status', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['staff', 'admin', 'head_admin', 'branch_admin', 'cashier', 'barista']);
+    const result = await requireUser(req, res, ['staff', 'admin', 'head_admin', 'branch_admin']);
     if (!result) return;
     const allowed = ['new', 'preparing', 'ready_for_pickup', 'completed', 'cancelled'];
     if (!allowed.includes(req.body.status)) return res.status(400).json({ error: 'Invalid order status.' });
-    let query = (supabaseAdmin || supabase).from('orders').update({ status: req.body.status }).eq('id', req.params.id);
-    if (!['admin', 'head_admin'].includes(result.profile.role)) query = query.eq('branch_id', result.profile.branch_id);
-    const { data, error } = await query.select().single();
+    if (!supabaseAdmin) return res.status(503).json({ error: 'Order status updates require a server-only service-role key.' });
+    const { data, error } = await supabaseAdmin.rpc('update_order_status_with_audit', {
+      p_order_id: req.params.id,
+      p_status: req.body.status,
+      p_actor_id: result.user.id,
+    });
     if (error) throw error;
-    await logActivity(result.user.id, data.branch_id, `order.${req.body.status}`, 'order', data.id);
+    if (req.body.status !== 'completed') {
+      await logActivity(result.user.id, data.branch_id, `order.${req.body.status}`, 'order', data.id);
+    }
     res.json(data);
   } catch (error) {
     console.error('Order status failure:', error.message);
-    res.status(400).json({ error: 'Unable to update order status.' });
+    res.status(400).json({ error: error.message || 'Unable to update order status.' });
   }
 });
 

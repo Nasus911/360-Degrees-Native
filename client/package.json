@@ -4,7 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
-    "expo": "~57.0.30",
+    "expo": "~57.0.31",
     "expo-camera": "~57.0.6",
     "expo-image-picker": "~57.0.20",
     "expo-status-bar": "~57.0.1",
@@ -12,6 +12,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-qrcode-svg": "^6.3.26",
+    "react-native-safe-area-context": "~5.7.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2"
   },
