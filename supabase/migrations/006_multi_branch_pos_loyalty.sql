@@ -1,6 +1,15 @@
+drop policy if exists "staff and admins read inventory" on public.inventory;
+drop policy if exists "staff and admins read orders" on public.orders;
+drop policy if exists "staff update orders" on public.orders;
+drop policy if exists "order participants read items" on public.order_items;
+drop policy if exists "order participants read receipts" on public.receipts;
+
 alter table public.profiles alter column role drop default;
 alter table public.profiles alter column role type text using role::text;
 alter table public.profiles alter column role set default 'customer';
+
+create policy "order participants read items" on public.order_items for select to authenticated using (exists (select 1 from public.orders where id = order_id and (customer_id = auth.uid() or public.is_admin() or exists (select 1 from public.profiles where id = auth.uid() and role = 'staff'))));
+create policy "order participants read receipts" on public.receipts for select to authenticated using (exists (select 1 from public.orders where id = order_id and (customer_id = auth.uid() or public.is_admin() or exists (select 1 from public.profiles where id = auth.uid() and role = 'staff'))));
 
 alter table public.branches add column if not exists is_active boolean not null default true;
 alter table public.profiles add column if not exists customer_code text;
