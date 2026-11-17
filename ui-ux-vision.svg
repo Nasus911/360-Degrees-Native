@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#38251C" flood-opacity=".12"/>
+    </filter>
+    <linearGradient id="coffee" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#D96B43"/>
+      <stop offset="1" stop-color="#B9482D"/>
+    </linearGradient>
+    <linearGradient id="drink" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#EFE3D5"/>
+      <stop offset="1" stop-color="#DBC4AE"/>
+    </linearGradient>
+    <style>
+      .sans{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      .serif{font-family:Georgia,"Times New Roman",serif}
+      .ink{fill:#35261F}
+      .muted{fill:#85766C}
+      .tiny{font-size:11px}
+      .small{font-size:13px}
+      .body{font-size:15px}
+      .label{font-size:11px;font-weight:700;letter-spacing:1.4px}
+      .strong{font-weight:700}
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F7F3ED"/>
+  <circle cx="1470" cy="72" r="150" fill="#EFE4D9" opacity=".55"/>
+  <circle cx="102" cy="914" r="190" fill="#EEE4D7" opacity=".48"/>
+
+  <text x="72" y="65" class="sans label" fill="#B95335">PRODUCT DESIGN CONCEPT</text>
+  <text x="72" y="116" class="serif ink" font-size="39">A calmer, clearer cafe experience</text>
+  <text x="72" y="148" class="sans muted" font-size="15">Every screen makes the next useful action easy to find.</text>
+  <rect x="1302" y="72" width="226" height="38" rx="19" fill="#EEE5DC"/>
+  <circle cx="1323" cy="91" r="5" fill="#D9683C"/>
+  <text x="1338" y="96" class="sans small strong" fill="#614C3F">360° SPECIALTY CAFE</text>
+
+  <text x="74" y="190" class="sans label" fill="#A95639">01  ADMIN OVERVIEW</text>
+  <text x="1194" y="190" class="sans label" fill="#A95639">02  CUSTOMER MOBILE</text>
+
+  <!-- Admin dashboard -->
+  <g filter="url(#shadow)">
+    <rect x="64" y="210" width="1070" height="702" rx="20" fill="#FFFEFC"/>
+    <rect x="64" y="210" width="228" height="702" rx="20" fill="#34251F"/>
+    <path d="M272 210h20v702h-20z" fill="#34251F"/>
+  </g>
+  <rect x="86" y="236" width="42" height="42" rx="12" fill="url(#coffee)"/>
+  <text x="93" y="263" class="sans strong" font-size="17" fill="#fff">360</text>
+  <text x="140" y="253" class="serif" font-size="15" fill="#fff">360 Degrees</text>
+  <text x="140" y="270" class="sans tiny" fill="#BBA99C">SPECIALTY CAFE</text>
+  <text x="87" y="321" class="sans label" fill="#A58F81">WORKSPACE</text>
+  <rect x="79" y="339" width="196" height="42" rx="10" fill="#D9683C"/>
+  <text x="96" y="366" class="sans body strong" fill="#fff">⌂</text>
+  <text x="123" y="366" class="sans small strong" fill="#fff">Overview</text>
+  <text x="96" y="414" class="sans body" fill="#D7C8BD">⌖</text>
+  <text x="123" y="414" class="sans small" fill="#D7C8BD">Branches</text>
+  <text x="96" y="457" class="sans body" fill="#D7C8BD">▦</text>
+  <text x="123" y="457" class="sans small" fill="#D7C8BD">Inventory</text>
+  <text x="96" y="500" class="sans body" fill="#D7C8BD">☕</text>
+  <text x="123" y="500" class="sans small" fill="#D7C8BD">Products</text>
+  <text x="96" y="543" class="sans body" fill="#D7C8BD">♙</text>
+  <text x="123" y="543" class="sans small" fill="#D7C8BD">Employees</text>
+  <text x="96" y="586" class="sans body" fill="#D7C8BD">◷</text>
+  <text x="123" y="586" class="sans small" fill="#D7C8BD">Activity log</text>
+  <line x1="87" y1="832" x2="270" y2="832" stroke="#5B473C"/>
+  <circle cx="105" cy="868" r="16" fill="#604637"/>
+  <text x="100" y="873" class="sans tiny strong" fill="#fff">AD</text>
+  <text x="131" y="865" class="sans small strong" fill="#fff">Admin</text>
+  <text x="131" y="883" class="sans tiny" fill="#BBA99C">Head office</text>
+
+  <rect x="292" y="210" width="842" height="64" fill="#FFFEFC"/>
+  <line x1="292" y1="274" x2="1134" y2="274" stroke="#EEE7E0"/>
+  <text x="324" y="249" class="sans small muted">Workspace  /  Overview</text>
+  <rect x="922" y="227" width="184" height="34" rx="9" fill="#fff" stroke="#E8DED5"/>
+  <text x="938" y="249" class="sans tiny ink">⌖  All branches</text>
+  <text x="324" y="319" class="sans label" fill="#B95335">MONDAY, OCTOBER 23</text>
+  <text x="324" y="357" class="serif ink" font-size="29">Good afternoon, Admin</text>
+  <text x="324" y="382" class="sans small muted">A quick read on how your cafe is doing today.</text>
+  <rect x="980" y="322" width="126" height="38" rx="9" fill="#34251F"/>
+  <text x="1002" y="346" class="sans tiny strong" fill="#fff">＋  New branch</text>
+
+  <!-- Metrics -->
+  <g>
+    <rect x="324" y="405" width="183" height="107" rx="13" fill="#FFFEFC" stroke="#EEE7E0"/>
+    <text x="341" y="431" class="sans tiny muted">TODAY'S SALES</text>
+    <text x="341" y="467" class="sans strong ink" font-size="25">₱24,680</text>
+    <text x="341" y="492" class="sans tiny" fill="#65815F">↗  12% vs. yesterday</text>
+    <rect x="519" y="405" width="183" height="107" rx="13" fill="#FFFEFC" stroke="#EEE7E0"/>
+    <text x="536" y="431" class="sans tiny muted">ORDERS</text>
+    <text x="536" y="467" class="sans strong ink" font-size="25">86</text>
+    <text x="536" y="492" class="sans tiny muted">Across all branches</text>
+    <rect x="714" y="405" width="183" height="107" rx="13" fill="#FFFEFC" stroke="#EEE7E0"/>
+    <text x="731" y="431" class="sans tiny muted">AVERAGE ORDER</text>
+    <text x="731" y="467" class="sans strong ink" font-size="25">₱287</text>
+    <text x="731" y="492" class="sans tiny muted">₱18 above last week</text>
+    <rect x="909" y="405" width="197" height="107" rx="13" fill="#FBF4EB" stroke="#E8D6C7"/>
+    <text x="926" y="431" class="sans tiny" fill="#A95639">NEEDS ATTENTION</text>
+    <text x="926" y="467" class="sans strong ink" font-size="25">3 items</text>
+    <text x="926" y="492" class="sans tiny muted">Low stock across branches</text>
+  </g>
+
+  <!-- Reports section embedded on Overview -->
+  <rect x="324" y="530" width="782" height="352" rx="14" fill="#FFFEFC" stroke="#EEE7E0"/>
+  <text x="347" y="563" class="sans strong ink" font-size="16">Sales &amp; performance</text>
+  <text x="347" y="584" class="sans tiny muted">Reports live right on Overview—no extra menu hop.</text>
+  <rect x="904" y="546" width="178" height="31" rx="8" fill="#fff" stroke="#E8DED5"/>
+  <text x="917" y="566" class="sans tiny ink">All branches  ▾</text>
+  <rect x="347" y="606" width="736" height="238" rx="10" fill="#FBF8F4"/>
+  <text x="366" y="634" class="sans tiny muted">SALES THIS WEEK</text>
+  <text x="366" y="663" class="sans strong ink" font-size="21">₱146,820</text>
+  <text x="494" y="661" class="sans tiny" fill="#65815F">↗  8.4%</text>
+  <line x1="382" y1="798" x2="1059" y2="798" stroke="#DED4CB"/>
+  <line x1="382" y1="748" x2="1059" y2="748" stroke="#EAE2DA" stroke-dasharray="3 5"/>
+  <line x1="382" y1="698" x2="1059" y2="698" stroke="#EAE2DA" stroke-dasharray="3 5"/>
+  <path d="M405 766 C450 753 461 761 496 734 S558 748 597 718 S663 729 699 700 S762 716 801 693 S863 710 903 677 S966 698 1000 666 S1034 674 1060 647" stroke="#D9683C" stroke-width="4" stroke-linecap="round"/>
+  <path d="M405 766 C450 753 461 761 496 734 S558 748 597 718 S663 729 699 700 S762 716 801 693 S863 710 903 677 S966 698 1000 666 S1034 674 1060 647 L1060 798 L405 798Z" fill="#D9683C" opacity=".09"/>
+  <circle cx="801" cy="693" r="5" fill="#D9683C" stroke="#fff" stroke-width="3"/>
+  <text x="398" y="821" class="sans tiny muted">Mon</text>
+  <text x="507" y="821" class="sans tiny muted">Tue</text>
+  <text x="617" y="821" class="sans tiny muted">Wed</text>
+  <text x="727" y="821" class="sans tiny muted">Thu</text>
+  <text x="837" y="821" class="sans tiny muted">Fri</text>
+  <text x="947" y="821" class="sans tiny muted">Sat</text>
+  <text x="1046" y="821" class="sans tiny muted">Sun</text>
+  <text x="347" y="864" class="sans tiny muted">Sales, average order, gross profit, and stock alerts—all in one glance.</text>
+
+  <!-- Mobile customer preview -->
+  <g filter="url(#shadow)">
+    <rect x="1195" y="210" width="340" height="702" rx="34" fill="#29201C"/>
+    <rect x="1205" y="220" width="320" height="682" rx="27" fill="#F9F6F1"/>
+  </g>
+  <rect x="1303" y="226" width="124" height="20" rx="10" fill="#29201C"/>
+  <text x="1227" y="262" class="sans tiny strong ink">9:41</text>
+  <circle cx="1476" cy="256" r="3" fill="#35261F"/>
+  <circle cx="1487" cy="256" r="3" fill="#35261F"/>
+  <rect x="1495" y="250" width="18" height="11" rx="3" stroke="#35261F" stroke-width="1.5"/>
+  <rect x="1498" y="253" width="12" height="5" rx="1.5" fill="#65815F"/>
+  <rect x="1205" y="276" width="320" height="56" fill="#34251F"/>
+  <rect x="1223" y="286" width="36" height="36" rx="10" fill="url(#coffee)"/>
+  <text x="1229" y="309" class="sans tiny strong" fill="#fff">360</text>
+  <text x="1270" y="298" class="serif" font-size="13" fill="#fff">360 Degrees Cafe</text>
+  <text x="1270" y="315" class="sans" font-size="9" letter-spacing="1" fill="#C5B4A7">LIPA BRANCH</text>
+  <circle cx="1490" cy="304" r="17" fill="#49362C"/>
+  <text x="1484" y="310" class="sans body" fill="#fff">⌖</text>
+
+  <text x="1227" y="367" class="sans label" fill="#B95335">GOOD AFTERNOON</text>
+  <text x="1227" y="397" class="serif ink" font-size="25">Your coffee,</text>
+  <text x="1227" y="424" class="serif ink" font-size="25">your way.</text>
+  <rect x="1227" y="443" width="286" height="39" rx="10" fill="#FFFEFC" stroke="#E8DED5"/>
+  <text x="1240" y="468" class="sans small ink">⌖  Lipa Branch</text>
+  <text x="1490" y="468" class="sans small muted">⌄</text>
+  <text x="1227" y="516" class="sans strong ink" font-size="16">Popular today</text>
+  <text x="1449" y="515" class="sans tiny strong" fill="#B95335">View menu →</text>
+
+  <rect x="1227" y="535" width="136" height="180" rx="12" fill="#FFFEFC" stroke="#EEE7E0"/>
+  <rect x="1237" y="545" width="116" height="91" rx="9" fill="url(#drink)"/>
+  <ellipse cx="1294" cy="604" rx="24" ry="7" fill="#A76547" opacity=".65"/>
+  <path d="M1274 574h40l-5 30q-15 11-30 0z" fill="#FFF9F0"/>
+  <path d="M1280 575h27l-4 22q-10 6-19 0z" fill="#8B573D"/>
+  <path d="M1313 581q17-6 11 10q-3 7-12 5" stroke="#FFF9F0" stroke-width="4"/>
+  <text x="1239" y="657" class="sans small strong ink">Spanish Latte</text>
+  <text x="1239" y="678" class="sans tiny muted">₱185</text>
+  <rect x="1304" y="662" width="44" height="31" rx="8" fill="#D9683C"/>
+  <text x="1319" y="683" class="sans small strong" fill="#fff">＋</text>
+
+  <rect x="1374" y="535" width="139" height="180" rx="12" fill="#FFFEFC" stroke="#EEE7E0"/>
+  <rect x="1384" y="545" width="119" height="91" rx="9" fill="#E9E3D3"/>
+  <path d="M1422 567h41l-5 35q-15 10-31 0z" fill="#FFF9F0"/>
+  <path d="M1427 572h31l-4 25q-11 6-23 0z" fill="#88754C"/>
+  <circle cx="1448" cy="577" r="15" fill="#F3E7D8"/>
+  <text x="1386" y="657" class="sans small strong ink">Ube Cloud</text>
+  <text x="1386" y="678" class="sans tiny muted">₱215</text>
+  <rect x="1454" y="662" width="44" height="31" rx="8" fill="#D9683C"/>
+  <text x="1469" y="683" class="sans small strong" fill="#fff">＋</text>
+
+  <rect x="1227" y="735" width="286" height="54" rx="12" fill="#F0E8DF"/>
+  <text x="1243" y="758" class="sans tiny strong" fill="#A95639">PICKUP MADE SIMPLE</text>
+  <text x="1243" y="777" class="sans tiny muted">Choose your branch before checkout.</text>
+  <rect x="1205" y="810" width="320" height="76" rx="0" fill="#FFFEFC"/>
+  <line x1="1205" y1="810" x2="1525" y2="810" stroke="#EEE7E0"/>
+  <rect x="1220" y="819" width="290" height="52" rx="15" fill="#34251F"/>
+  <circle cx="1249" cy="845" r="14" fill="#D9683C"/>
+  <text x="1244" y="850" class="sans small strong" fill="#fff">2</text>
+  <text x="1272" y="841" class="sans small strong" fill="#fff">View cart</text>
+  <text x="1272" y="858" class="sans tiny" fill="#C9B8AC">2 items</text>
+  <text x="1478" y="849" class="sans small strong" fill="#fff">₱400</text>
+
+  <text x="74" y="952" class="sans tiny muted">CONCEPT DIRECTION  ·  Fewer steps  ·  Clearer hierarchy  ·  Comfortable on every screen</text>
+  <text x="1527" y="952" class="sans tiny muted" text-anchor="end">DESIGN STUDY  /  01</text>
+</svg>

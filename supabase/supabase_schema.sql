@@ -290,17 +290,19 @@ set search_path = public
 as $$
 declare
   new_contact_number text := nullif(trim(new.raw_user_meta_data->>'contact_number'), '');
+  new_full_name text := nullif(trim(new.raw_user_meta_data->>'full_name'), '');
+  new_role text := case when new.raw_user_meta_data->>'role' = 'guest' then 'guest' else 'customer' end;
 begin
-  if new_contact_number is null then
+  if new_role <> 'guest' and new_contact_number is null then
     raise exception 'Contact number is required.';
   end if;
 
   insert into public.profiles (id, full_name, email, role, contact_number)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    coalesce(new_full_name, split_part(new.email, '@', 1)),
     new.email,
-    'customer',
+    new_role,
     new_contact_number
   );
   return new;
@@ -1309,6 +1311,12 @@ begin
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'activity_logs'
     ) then
       alter publication supabase_realtime add table public.activity_logs;
+    end if;
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'inventory'
+    ) then
+      alter publication supabase_realtime add table public.inventory;
     end if;
   end if;
 end;

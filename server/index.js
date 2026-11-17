@@ -144,7 +144,7 @@ app.post('/api/auth/guest', async (req, res) => {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName },
+      user_metadata: { full_name: fullName, role: 'guest' },
     });
     if (createError) throw createError;
     userId = created.user.id;
@@ -647,11 +647,18 @@ app.post('/api/pos/checkout', async (req, res) => {
     };
     const { data, error } = result.profile.role === 'guest'
       ? await supabaseAdmin.rpc('process_guest_checkout', { ...checkoutArgs, p_guest_id: result.user.id })
-      : await supabaseAdmin.rpc('process_customized_pos_checkout', {
-        ...checkoutArgs,
-        p_customer_code: result.profile.role === 'customer' ? result.profile.customer_code : req.body.customerCode || null,
-        p_channel: result.profile.role === 'customer' ? 'online' : 'counter',
-      });
+      : result.profile.role === 'customer'
+        ? await supabaseAdmin.rpc('process_customer_checkout', {
+          p_customer_id: result.user.id,
+          p_branch_id: branchId,
+          p_items: req.body.items,
+          p_pickup_at: pickupAt,
+        })
+        : await supabaseAdmin.rpc('process_customized_pos_checkout', {
+          ...checkoutArgs,
+          p_customer_code: req.body.customerCode || null,
+          p_channel: 'counter',
+        });
     if (error) throw error;
     await logActivity(result.user.id, branchId, 'pos.checkout', 'order', data.order.id, { total: data.order.total, promotion: data.promotion?.id, customerId: data.order.customer_id });
     res.status(201).json(data);
@@ -757,14 +764,21 @@ app.post('/api/orders', async (req, res) => {
         p_items: items,
         p_pickup_at: pickupAt || null,
       })
-      : await supabaseAdmin.rpc('process_customized_pos_checkout', {
-        p_actor_id: result.user.id,
-        p_branch_id: branchId,
-        p_customer_code: result.profile.customer_code,
-        p_items: items,
-        p_channel: 'online',
-        p_pickup_at: pickupAt || null,
-      });
+      : result.profile.role === 'customer'
+        ? await supabaseAdmin.rpc('process_customer_checkout', {
+          p_customer_id: result.user.id,
+          p_branch_id: branchId,
+          p_items: items,
+          p_pickup_at: pickupAt || null,
+        })
+        : await supabaseAdmin.rpc('process_customized_pos_checkout', {
+          p_actor_id: result.user.id,
+          p_branch_id: branchId,
+          p_customer_code: result.profile.customer_code,
+          p_items: items,
+          p_channel: 'online',
+          p_pickup_at: pickupAt || null,
+        });
     if (error) throw error;
     res.status(201).json(data);
   } catch (error) {
@@ -775,7 +789,7 @@ app.post('/api/orders', async (req, res) => {
 
 app.patch('/api/orders/:id/status', async (req, res) => {
   try {
-    const result = await requireUser(req, res, ['staff', 'admin', 'head_admin', 'branch_admin']);
+    const result = await requireUser(req, res, ['staff', 'cashier', 'barista', 'admin', 'head_admin', 'branch_admin']);
     if (!result) return;
     const allowed = ['new', 'preparing', 'ready_for_pickup', 'completed', 'cancelled'];
     if (!allowed.includes(req.body.status)) return res.status(400).json({ error: 'Invalid order status.' });

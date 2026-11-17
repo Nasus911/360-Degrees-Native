@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -108,8 +108,21 @@ async function requestApi(path, options = {}) {
     ...options,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...options.headers },
   });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+  const responseText = await response.text();
+  let result;
+  try {
+    result = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    const responseKind = /^\s*</.test(responseText) ? 'an HTML page' : 'an invalid response';
+    const requestRoute = `${(options.method || 'GET').toUpperCase()} ${path}`;
+    throw new Error(`The API returned ${responseKind} for ${requestRoute} (HTTP ${response.status}). Check that EXPO_PUBLIC_API_URL points to the Express API server with this route.`);
+  }
+  if (!response.ok) {
+    const errorMessage = result && typeof result === 'object' && typeof result.error === 'string'
+      ? result.error
+      : 'The request could not be completed.';
+    throw new Error(errorMessage);
+  }
   return result;
 }
 
@@ -139,6 +152,7 @@ function AppContent() {
   const [orders, setOrders] = useState([]);
   const [localActivityLogs, setLocalActivityLogs] = useState([]);
   const [orderLoadError, setOrderLoadError] = useState('');
+  const [orderStatusError, setOrderStatusError] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
@@ -724,10 +738,14 @@ function AppContent() {
   };
   const updateOrderStatus = async (orderId, status) => {
     const order = orders.find((current) => current.id === orderId);
-    if (!order) return;
+    setOrderStatusError('');
+    if (!order) {
+      setOrderStatusError('This order is no longer loaded. Refresh the queue and try again.');
+      return;
+    }
     try {
       const updated = supabase
-        ? await requestApi(`/api/orders/${order.databaseId || order.id}`, {
+        ? await requestApi(`/api/orders/${order.databaseId || order.id}/status`, {
           method: 'PATCH',
           body: JSON.stringify({ status: statusToApi[status] || status }),
         })
@@ -767,7 +785,9 @@ function AppContent() {
         }, ...current]);
       }
     } catch (error) {
-      Alert.alert('Unable to update order', error.message || 'Please try again.');
+      const message = error.message || 'Please try again.';
+      setOrderStatusError(message);
+      console.error('Order status update failure:', message);
     }
   };
   const dismissNotification = async (notificationId) => {
@@ -817,7 +837,7 @@ function AppContent() {
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
             {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
-            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} />}
+            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} statusError={orderStatusError} />}
             {page === 'receipts' && <Receipts orders={orders} />}
             {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} />}
             {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
@@ -875,6 +895,9 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       if (accounts.some((account) => account.email === normalizedEmail)) return setError('An account with this email already exists.');
       return onRegister({ id: `customer-${Date.now()}`, name: name.trim(), email: normalizedEmail, password, role: 'customer', contactNumber: contactNumber.trim(), customerCode: `CS-${new Date().getFullYear()}-${String(accounts.filter((account) => account.role === 'customer').length + 1).padStart(4, '0')}` }).catch((submitError) => setError(submitError.message));
     }
+    if (!accounts.length) {
+      return onLogin({ email: normalizedEmail, password }).catch((submitError) => setError(submitError.message));
+    }
     const account = accounts.find((item) => item.email === normalizedEmail && item.password === password);
     if (!account) return setError('Email or password is incorrect.');
     return onLogin(account).catch((submitError) => setError(submitError.message));
@@ -930,7 +953,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
           <Text style={styles.guestButtonText}>Continue as Guest Account</Text>
           <Text style={styles.guestHint}>Temporary access · no loyalty points</Text>
         </Pressable>}
-        {mode === 'login' && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
+        {mode === 'login' && accounts.length > 0 && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
@@ -1300,9 +1323,11 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const reloadRequestId = useRef(0);
   const branches = knownBranches.filter((branch) => branch.is_active !== false);
   const lowStockNotifications = notifications.filter((notification) => notification.title === 'Low stock alert');
-  const reload = async () => {
+  const reload = useCallback(async () => {
+    const requestId = ++reloadRequestId.current;
     if (!supabase) {
       setItems(products.filter((item) => item.category === 'Inventory').map((item) => ({ id: String(item.id), name: item.name, sku: `INV-${item.id}`, quantity: item.stock, low_stock_threshold: 10, unit_cost: 0, branch_id: branchId || 'demo-lipa' })));
       setTransfers([]); setMovements([]); setLoading(false); return;
@@ -1313,11 +1338,44 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
         requestApi('/api/inventory/transfers'),
         requestApi(`/api/inventory/movements${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`),
       ]);
+      if (requestId !== reloadRequestId.current) return;
       setItems(stock); setInventoryId(stock[0]?.id || ''); setTransfers(transferRows); setMovements(movementRows);
-    } catch (loadError) { setError(loadError.message || 'Unable to load inventory.'); }
-    finally { setLoading(false); }
-  };
-  useEffect(() => { reload(); }, [branchId]);
+    } catch (loadError) {
+      if (requestId === reloadRequestId.current) setError(loadError.message || 'Unable to load inventory.');
+    } finally {
+      if (requestId === reloadRequestId.current) setLoading(false);
+    }
+  }, [branchId]);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (active) void reload();
+    };
+    refresh();
+    if (!supabase) {
+      return () => {
+        active = false;
+        reloadRequestId.current += 1;
+      };
+    }
+    const channel = supabase.channel(`inventory-${branchId || 'all'}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'inventory',
+        ...(branchId ? { filter: `branch_id=eq.${branchId}` } : {}),
+      }, refresh)
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' && active) {
+          console.error('Live inventory updates are unavailable; reload the inventory screen to refresh stock.');
+        }
+      });
+    return () => {
+      active = false;
+      reloadRequestId.current += 1;
+      supabase.removeChannel(channel).catch((error) => console.error('Inventory subscription cleanup failure:', error.message));
+    };
+  }, [branchId, reload]);
   const requestTransfer = async () => {
     const item = items.find((stock) => stock.id === inventoryId);
     const transferQuantity = Number(quantity);
@@ -1344,13 +1402,21 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
     } catch (reviewError) { setError(reviewError.message || 'Unable to review transfer.'); }
   };
   const adjustStock = async (item, delta) => {
+    const nextQuantity = item.quantity + delta;
+    if (nextQuantity < 0) return setError('Stock cannot be less than zero.');
     setError(''); setNotice('');
+    setItems((current) => current.map((stock) => stock.id === item.id ? { ...stock, quantity: nextQuantity } : stock));
     try {
-      if (supabase) await requestApi(`/api/inventory/${item.id}/adjust`, { method: 'POST', body: JSON.stringify({ delta }) });
-      else setItems((current) => current.map((stock) => stock.id === item.id ? { ...stock, quantity: Math.max(0, stock.quantity + delta) } : stock));
+      if (supabase) {
+        await requestApi(`/api/inventory/${item.id}/adjust`, { method: 'POST', body: JSON.stringify({ delta }) });
+        void reload();
+      }
       setNotice(`${item.name} stock ${delta > 0 ? 'received' : 'adjusted'}.`);
-      if (supabase) await reload();
-    } catch (adjustError) { setError(adjustError.message || 'Unable to adjust stock.'); }
+    } catch (adjustError) {
+      setItems((current) => current.map((stock) => stock.id === item.id ? { ...stock, quantity: stock.quantity - delta } : stock));
+      setError(adjustError.message || 'Unable to adjust stock.');
+      void reload();
+    }
   };
   const selectedItem = items.find((item) => item.id === inventoryId);
   return <>
@@ -1820,7 +1886,7 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
     <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
   </View>;
 }
-function Queue({ orders, onUpdateStatus, loadError }) {
+function Queue({ orders, onUpdateStatus, loadError, statusError }) {
   const [expandedCustomer, setExpandedCustomer] = useState(null);
   const sortedOrders = [...orders].sort((left, right) => {
     const leftTime = new Date(left.scheduled_pickup_at || left.estimated_pickup_at || left.created_at || 0).getTime();
@@ -1840,6 +1906,7 @@ function Queue({ orders, onUpdateStatus, loadError }) {
     <Header eyebrow="Service choreography" title="Order queue" subtitle="Tap a customer name to expand their orders. Orders are sorted by pickup time." />
     {!supabase && <DemoModeNotice message="Demo mode: orders are not shared with other devices. Configure the client's Supabase credentials and API URL to use the live queue." />}
     {loadError ? <Text style={styles.formError}>Unable to sync orders: {loadError}</Text> : null}
+    {statusError ? <Text style={styles.formError}>Unable to update order: {statusError}</Text> : null}
     {upcomingOrders.length > 0 && <View style={styles.card}><Text style={styles.cardTitle}>Upcoming pickups</Text>{upcomingOrders.slice(0, 8).map((order) => <Text key={`pickup-${order.id}`} style={styles.subtitle}>{pickupLabel(order) || 'Pickup time pending'} · #{order.id} · {order.customer}</Text>)}</View>}
     {customerGroups.length ? customerGroups.map((group) => {
       const isExpanded = expandedCustomer === group.key;
@@ -1968,18 +2035,16 @@ function Wallet({ user, onRedeem }) {
     if (!supabase || !user.id) return;
     let active = true;
     Promise.all([
-      supabase.from('profiles').select('reward_points,customer_code').eq('id', user.id).single(),
       supabase.from('reward_transactions').select('id,points,description,transaction_type,created_at,expires_at,redemption_code,redeemed_at').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('rewards').select('id,name,description,points_required').eq('is_active', true).order('points_required'),
-    ]).then(([profileResult, historyResult, rewardsResult]) => {
+    ]).then(([historyResult, rewardsResult]) => {
       if (!active) return;
-      const lookupError = profileResult.error || historyResult.error || rewardsResult.error;
+      const lookupError = historyResult.error || rewardsResult.error;
       if (lookupError) {
         setLoadError(lookupError.message || 'Unable to load loyalty information.');
         return;
       }
       setLoadError('');
-      setPoints(profileResult.data.reward_points);
       setHistory(historyResult.data);
       const availablePoints = historyResult.data.reduce((total, transaction) => {
         const expiredEarn = transaction.transaction_type === 'earned' && transaction.expires_at && new Date(transaction.expires_at).getTime() <= Date.now();
