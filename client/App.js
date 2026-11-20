@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
 import QRCode from 'react-native-qrcode-svg';
+import { BarChart, PieChart } from 'react-native-chart-kit';
 
 const products = [
   { id: 1, name: 'Iced Spanish Latte', category: 'Coffee', price: 185, stock: 38, emoji: '🥤', description: 'Local espresso, condensed milk, silky and balanced.' },
@@ -130,7 +131,7 @@ function AppContent() {
   const [promotions, setPromotions] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState('');
-  const [reportSummary, setReportSummary] = useState(null);
+    const [reportSummary, setReportSummary] = useState(null);
   const [role, setRole] = useState(null);
   const [page, setPage] = useState('overview');
   const [cart, setCart] = useState([]);
@@ -1891,6 +1892,25 @@ function Receipts({ orders }) {
 function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId);
+  const { width } = useWindowDimensions();
+  const chartWidth = Math.max(240, Math.min(width - (width < 700 ? 48 : 320), 620));
+  const sales = Math.max(0, Number(summary?.sales) || 0);
+  const costOfGoods = Math.max(0, Number(summary?.costOfGoods) || 0);
+  const grossProfit = Math.max(0, Number(summary?.grossProfit) || 0);
+  const chartConfig = {
+    backgroundColor: '#fffefa',
+    backgroundGradientFrom: '#fffefa',
+    backgroundGradientTo: '#fffefa',
+    decimalPlaces: 0,
+    color: (opacity = 1) => `rgba(185, 79, 43, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(94, 81, 73, ${opacity})`,
+    propsForBackgroundLines: { stroke: '#eee7df' },
+  };
+  const hasFinancialData = sales + costOfGoods + grossProfit > 0;
+  const profitMix = [
+    { name: 'Cost of goods', population: costOfGoods, color: '#66816c', legendFontColor: '#5e5149', legendFontSize: 12 },
+    { name: 'Gross profit', population: grossProfit, color: '#d9683c', legendFontColor: '#5e5149', legendFontSize: 12 },
+  ].filter((item) => item.population > 0);
   return <>
     <Header eyebrow="Performance analytics" title="Sales reports" subtitle="Sales, inventory valuation, costing, and customer activity." />
     {isHeadAdmin && <View style={styles.card}>
@@ -1913,6 +1933,36 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
       <Stat label="Inventory value" value={money(summary?.inventoryValue || 0)} note="At recorded unit cost" />
       <Stat label="Cost of goods" value={money(summary?.costOfGoods || 0)} note="Based on product cost" />
       <Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note="Sales less cost of goods" />
+    </View>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Financial performance</Text>
+      <Text style={styles.subtitle}>Sales compared with cost of goods and gross profit.</Text>
+      {hasFinancialData ? <BarChart
+        data={{ labels: ['Sales', 'Cost', 'Profit'], datasets: [{ data: [sales, costOfGoods, grossProfit].map((amount) => amount / 1000) }] }}
+        width={chartWidth}
+        height={230}
+        yAxisLabel="₱"
+        yAxisSuffix="k"
+        fromZero
+        showValuesOnTopOfBars
+        chartConfig={chartConfig}
+        style={styles.reportChart}
+      /> : <Text style={styles.subtitle}>Financial data will appear here when sales are recorded.</Text>}
+    </View>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Gross sales mix</Text>
+      <Text style={styles.subtitle}>Cost of goods and gross profit share.</Text>
+      {profitMix.length ? <PieChart
+        data={profitMix}
+        width={chartWidth}
+        height={210}
+        accessor="population"
+        backgroundColor="transparent"
+        paddingLeft="12"
+        absolute
+        chartConfig={chartConfig}
+        style={styles.reportChart}
+      /> : <Text style={styles.subtitle}>The sales mix will appear here when costs and profit are recorded.</Text>}
     </View>
   </>;
 }
@@ -2201,6 +2251,7 @@ const styles = StyleSheet.create({
   subtitle: { color: '#82766e', fontSize: 12, lineHeight: 19 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 },
   stat: { flexGrow: 1, flexBasis: 170, minHeight: 110, padding: 17, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 14 },
+  reportChart: { marginTop: 12, marginBottom: 8, borderRadius: 8 },
   statLabel: { color: '#82766e', fontSize: 11 },
   statValue: { color: '#30251f', fontSize: 24, fontWeight: '700', marginTop: 13 },
   statNote: { color: '#71815f', fontSize: 10, marginTop: 5 },
