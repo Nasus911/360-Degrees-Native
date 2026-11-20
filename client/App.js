@@ -2360,7 +2360,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
   authRoot: { flex: 1, backgroundColor: '#33241e', position: 'relative' },
-  authBackgroundImage: { opacity: 0.42 },
+  authBackgroundImage: { width: '100%', height: '100%', opacity: 0.42 },
   authBackgroundTint: { backgroundColor: 'rgba(51, 36, 30, 0.2)' },
   authSafeArea: { flex: 1, backgroundColor: 'transparent' },
   authKeyboardAvoiding: { flex: 1 },
