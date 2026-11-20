@@ -116,7 +116,7 @@ async function requestApi(path, options = {}) {
 
 export default function App() {
   return <SafeAreaProvider>
-    <StatusBar style={Platform.OS === 'android' ? 'light' : 'dark'} backgroundColor="#33241e" translucent={false} />
+    <StatusBar style={Platform.OS === 'android' ? 'light' : 'dark'} backgroundColor="#533416" translucent={false} />
     <AppContent />
   </SafeAreaProvider>;
 }
@@ -1282,7 +1282,10 @@ function LoyaltyAdmin({ onSave }) {
       <TextInput value={rewardName} onChangeText={setRewardName} placeholder="Reward name" style={styles.authInput} />
       <TextInput value={rewardPoints} onChangeText={setRewardPoints} placeholder="Points required" keyboardType="number-pad" style={styles.authInput} />
       <Pressable style={styles.buttonSecondary} onPress={addReward}><Text>Add reward</Text></Pressable>
-      {rewards.map((reward) => <View style={styles.accountRow} key={reward.id}><Text style={styles.cardTitle}>{reward.name}</Text><Text style={styles.pill}>{reward.points_required} points</Text></View>)}
+      {rewards.map((reward) => <View style={styles.accountRow} key={reward.id}>
+        <Text style={styles.cardTitle}>{reward.name}</Text>
+        <Text style={styles.pill}>{reward.points_required} points</Text>
+      </View>)}
       {notice ? <Text style={styles.successText}>{notice}</Text> : null}{error ? <Text style={styles.formError}>{error}</Text> : null}
     </View>
   </>;
@@ -1591,7 +1594,8 @@ function Promotions({ promotions, products, branches, defaultBranchId, isHeadAdm
       <Text style={styles.fieldLabel}>Promotion type</Text>
       <View style={styles.roleDropdown}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: typeMenuOpen }} onPress={() => setTypeMenuOpen((open) => !open)} style={styles.roleDropdownTrigger}>
-          <Text style={styles.roleDropdownValue}>{promoType === 'buy_x_get_y' ? 'Buy X Get Y' : promoType === 'percentage' ? 'Percentage discount' : promoType === 'fixed' ? 'Fixed amount discount' : 'Bundle discount'}</Text><Text style={styles.roleDropdownChevron}>{typeMenuOpen ? '▲' : '▼'}</Text>
+          <Text style={styles.roleDropdownValue}>{promoType === 'buy_x_get_y' ? 'Buy X Get Y' : promoType === 'percentage' ? 'Percentage discount' : promoType === 'fixed' ? 'Fixed amount discount' : 'Bundle discount'}</Text>
+          <Text style={styles.roleDropdownChevron}>{typeMenuOpen ? '▲' : '▼'}</Text>
         </Pressable>
         {typeMenuOpen && <View style={styles.roleDropdownMenu}>{[
           ['buy_x_get_y', 'Buy X Get Y'], ['percentage', 'Percentage discount'], ['fixed', 'Fixed amount discount'], ['bundle', 'Bundle discount'],
@@ -1619,9 +1623,12 @@ function Promotions({ promotions, products, branches, defaultBranchId, isHeadAdm
         <Text style={styles.fieldLabel}>Promotion scope</Text>
         <View style={styles.roleDropdown}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: scopeMenuOpen }} onPress={() => setScopeMenuOpen((open) => !open)} style={styles.roleDropdownTrigger}>
-            <Text style={styles.roleDropdownValue}>{branches.find((branch) => branch.id === branchId)?.name || 'All branches (global)'}</Text><Text style={styles.roleDropdownChevron}>{scopeMenuOpen ? '▲' : '▼'}</Text>
+            <Text style={styles.roleDropdownValue}>{branches.find((branch) => branch.id === branchId)?.name || 'All branches (global)'}</Text>
+            <Text style={styles.roleDropdownChevron}>{scopeMenuOpen ? '▲' : '▼'}</Text>
           </Pressable>
-          {scopeMenuOpen && <View style={styles.roleDropdownMenu}>{[{ id: '', name: 'All branches (global)' }, ...branches].map((branch) => <Pressable key={branch.id || 'global'} onPress={() => { setBranchId(branch.id); setScopeMenuOpen(false); }} style={styles.roleDropdownOption}><Text style={styles.roleDropdownOptionText}>{branch.name}</Text></Pressable>)}</View>}
+          {scopeMenuOpen && <View style={styles.roleDropdownMenu}>
+            {[{ id: '', name: 'All branches (global)' }, ...branches].map((branch) => <Pressable key={branch.id || 'global'} onPress={() => { setBranchId(branch.id); setScopeMenuOpen(false); }} style={styles.roleDropdownOption}><Text style={styles.roleDropdownOptionText}>{branch.name}</Text></Pressable>)}
+          </View>}
         </View>
       </> : <Text style={styles.subtitle}>Branch: {branches.find((branch) => branch.id === defaultBranchId)?.name || 'Assigned branch'}</Text>}
       {error ? <Text style={styles.formError}>{error}</Text> : null}
@@ -1879,7 +1886,7 @@ function DemoModeNotice({ message }) {
   return <View style={styles.notification}><Text style={styles.notificationTitle}>Demo mode</Text><Text style={styles.subtitle}>{message}</Text></View>;
 }
 function Receipts({ orders }) {
-  return <><Header eyebrow="Service history" title="Receipts" subtitle="Recent counter and online orders." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.customer} · {order.items}</Text>{order.promotionTitle && <Text style={styles.successText}>Promotion: {order.promotionTitle}</Text>}{Number(order.discount_total || order.discountTotal || 0) > 0 && <Text style={styles.warning}>Discount: -{money(order.discount_total || order.discountTotal)}</Text>}</View><Text style={styles.price}>{money(order.total)}</Text></View>)}</>;
+  return <><Header eyebrow="Service history" title="Receipts" subtitle="Recent counter and online orders." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.items} · {order.channel}</Text>{pickupLabel(order) ? <Text style={styles.successText}>{pickupLabel(order)}</Text> : null}</View><View><Text style={styles.pill}>{order.status}</Text><Text style={styles.price}>{money(order.total)}</Text></View></View>)}</>;
 }
 function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
@@ -1890,7 +1897,8 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
       <Text style={styles.fieldLabel}>Reporting scope</Text>
       <View style={styles.roleDropdown}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: branchMenuOpen }} onPress={() => setBranchMenuOpen((open) => !open)} style={styles.roleDropdownTrigger}>
-          <Text style={styles.roleDropdownValue}>{selectedBranch?.name || 'All branches combined'}</Text><Text style={styles.roleDropdownChevron}>{branchMenuOpen ? '▲' : '▼'}</Text>
+          <Text style={styles.roleDropdownValue}>{selectedBranch?.name || 'All branches combined'}</Text>
+          <Text style={styles.roleDropdownChevron}>{branchMenuOpen ? '▲' : '▼'}</Text>
         </Pressable>
         {branchMenuOpen && <View style={styles.roleDropdownMenu}>
           {[{ id: '', name: 'All branches combined' }, ...branches].map((branch) => <Pressable key={branch.id || 'all'} onPress={() => { onSelectBranch(branch.id); setBranchMenuOpen(false); }} style={styles.roleDropdownOption}><Text style={styles.roleDropdownOptionText}>{branch.name}</Text></Pressable>)}
@@ -1946,7 +1954,7 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
       </Pressable>
     </View>}
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>Picked for you</Text>
+           <Text style={styles.cardTitle}>Picked for you</Text>
       {customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>)}
       <Pressable style={styles.buttonSecondary} onPress={() => onNavigate('menu')}><Text>See menu</Text></Pressable>
     </View>
@@ -1972,22 +1980,19 @@ function Wallet({ user, onRedeem }) {
       supabase.from('reward_transactions').select('id,points,description,transaction_type,created_at,expires_at,redemption_code,redeemed_at').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('rewards').select('id,name,description,points_required').eq('is_active', true).order('points_required'),
     ]).then(([profileResult, historyResult, rewardsResult]) => {
-      if (!active) return;
-      const lookupError = profileResult.error || historyResult.error || rewardsResult.error;
-      if (lookupError) {
-        setLoadError(lookupError.message || 'Unable to load loyalty information.');
-        return;
+      if (!profileResult.error) {
+        setPoints(profileResult.data.reward_points);
       }
-      setLoadError('');
-      setPoints(profileResult.data.reward_points);
-      setHistory(historyResult.data);
-      const availablePoints = historyResult.data.reduce((total, transaction) => {
-        const expiredEarn = transaction.transaction_type === 'earned' && transaction.expires_at && new Date(transaction.expires_at).getTime() <= Date.now();
-        if (expiredEarn || transaction.transaction_type === 'expired') return total;
-        return total + Number(transaction.points);
-      }, 0);
-      setPoints(Math.max(0, availablePoints));
-      setRewards(rewardsResult.data);
+      if (!historyResult.error) {
+        setHistory(historyResult.data);
+        const availablePoints = historyResult.data.reduce((total, transaction) => {
+          const expiredEarn = transaction.transaction_type === 'earned' && transaction.expires_at && new Date(transaction.expires_at).getTime() <= Date.now();
+          if (expiredEarn || transaction.transaction_type === 'expired') return total;
+          return total + Number(transaction.points);
+        }, 0);
+        setPoints(Math.max(0, availablePoints));
+      }
+      if (!rewardsResult.error) setRewards(rewardsResult.data);
     }).catch((lookupError) => {
       console.error('Loyalty lookup failure:', lookupError.message);
       if (active) setLoadError(lookupError.message || 'Unable to load loyalty information.');
@@ -2277,4 +2282,63 @@ const styles = StyleSheet.create({
   progress: { height: 8, backgroundColor: '#866753', borderRadius: 8, marginTop: 15 },
   progressFill: { height: 8, width: '78%', backgroundColor: '#e8c4a7', borderRadius: 8 },
   chart: { color: '#d9683c', fontSize: 28, letterSpacing: 4, marginTop: 22, paddingVertical: 20 },
+});
+
+const PALETTE_VALUE_MAP = {
+  '#33241e': '#533416',
+  '#30251f': '#533416',
+  '#402e26': '#533416',
+  '#504038': '#533416',
+  '#5e5149': '#533416',
+  '#5f4031': '#533416',
+  '#866753': '#533416',
+  '#82766e': '#533416',
+  '#9f8c80': '#533416',
+  '#a33f2d': '#533416',
+  '#b33c2f': '#533416',
+  '#d9683c': '#CE7F20',
+  '#b94f2b': '#CE7F20',
+  '#a65c2f': '#CE7F20',
+  '#d9a99a': '#CE7F20',
+  '#e8c4a7': '#EEDFC7',
+  '#fbf8f3': '#EEDFC7',
+  '#fffefa': '#EEDFC7',
+  '#fff': '#EEDFC7',
+  '#f3eee8': '#EEDFC7',
+  '#e9e0d7': '#EEDFC7',
+  '#f5ece6': '#EEDFC7',
+  '#f0ebe5': '#EEDFC7',
+  '#f0e9e1': '#EEDFC7',
+  '#b9a99f': '#EEDFC7',
+  '#d8ccc3': '#EEDFC7',
+  '#71815f': '#607938',
+  '#596849': '#607938',
+  '#e7eddf': '#607938',
+  '#bdcdb0': '#607938',
+};
+
+Object.keys(styles).forEach((styleName) => {
+  const original = StyleSheet.flatten(styles[styleName]);
+  const remapped = { ...original };
+
+  Object.keys(remapped).forEach((property) => {
+    const value = remapped[property];
+    if (typeof value === 'string') {
+      const normalized = value.toLowerCase();
+
+      if (property === 'color' && normalized === '#fff') return;
+      if (property === 'backgroundColor' && normalized === '#fff') {
+        remapped[property] = '#EEDFC7';
+        return;
+      }
+      if (property === 'borderColor' && normalized === '#fff') {
+        remapped[property] = '#EEDFC7';
+        return;
+      }
+
+      remapped[property] = PALETTE_VALUE_MAP[normalized] || value;
+    }
+  });
+
+  styles[styleName] = remapped;
 });
