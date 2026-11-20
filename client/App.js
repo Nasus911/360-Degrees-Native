@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
 import QRCode from 'react-native-qrcode-svg';
+import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 const products = [
   { id: 1, name: 'Iced Spanish Latte', category: 'Coffee', price: 185, stock: 38, emoji: '🥤', description: 'Local espresso, condensed milk, silky and balanced.' },
@@ -144,6 +145,7 @@ function AppContent() {
   const [branches, setBranches] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState('');
   const [reportSummary, setReportSummary] = useState(null);
+  const [reportError, setReportError] = useState('');
   const [role, setRole] = useState(null);
   const [page, setPage] = useState('overview');
   const [cart, setCart] = useState([]);
@@ -320,20 +322,52 @@ function AppContent() {
   }, [role, user]);
 
   useEffect(() => {
-    if (!user || !['admin', 'head_admin', 'branch_admin'].includes(role)) return;
+    if (page !== 'overview' || !user || !['admin', 'head_admin', 'branch_admin'].includes(role)) return;
     if (!supabase) {
-      setReportSummary({ sales: 84620, orders: 186, averageOrder: 455, customers: 91, lowStock: 2, inventoryValue: 23400, costOfGoods: 36600, grossProfit: 48020 });
+      setReportSummary({
+        sales: 84620,
+        orders: 186,
+        averageOrder: 455,
+        customers: 91,
+        users: 94,
+        totalStock: 177,
+        stockStatus: { lowStock: 2, healthy: 8 },
+        salesByDay: [
+          { day: 'Mon', sales: 8200 }, { day: 'Tue', sales: 10400 }, { day: 'Wed', sales: 9600 },
+          { day: 'Thu', sales: 12800 }, { day: 'Fri', sales: 14200 }, { day: 'Sat', sales: 16700 }, { day: 'Sun', sales: 12720 },
+        ],
+        topProducts: [{ name: 'Iced Spanish Latte', units: 148, sales: 27380 }, { name: 'Ube Cloud Latte', units: 92, sales: 19780 }],
+        lowStock: 2,
+        inventoryValue: 23400,
+        costOfGoods: 36600,
+        grossProfit: 48020,
+      });
+      setReportError('');
       return;
     }
     let active = true;
     const query = activeBranchId ? `?branchId=${encodeURIComponent(activeBranchId)}` : '';
-    requestApi(`/api/admin/reports/summary${query}`).then((summary) => {
-      if (active) setReportSummary(summary);
-    }).catch((error) => {
-      if (active) console.error('Report loading failure:', error.message);
-    });
-    return () => { active = false; };
-  }, [activeBranchId, role, user]);
+    const refreshSummary = async () => {
+      try {
+        const summary = await requestApi(`/api/admin/reports/summary${query}`);
+        if (active) {
+          setReportSummary(summary);
+          setReportError('');
+        }
+      } catch (error) {
+        if (active) {
+          setReportError(error.message || 'Unable to load analytics from the database.');
+          console.error('Report loading failure:', error.message);
+        }
+      }
+    };
+    refreshSummary();
+    const timer = setInterval(refreshSummary, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [activeBranchId, page, role, user]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -825,7 +859,7 @@ function AppContent() {
           {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><Text style={styles.mobileBrandMark}>360</Text><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
           <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
           <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
-            {page === 'overview' && <AdminOverview summary={reportSummary} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
+            {page === 'overview' && <AdminOverview summary={reportSummary} reportError={reportError} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
             {page === 'inventory' && <Inventory branchId={activeBranchId || user.branchId} isHeadAdmin={isHeadAdmin} notifications={isHeadAdmin ? notifications : []} onDismissNotification={dismissNotification} branches={branches} />}
             {page === 'products' && <AdminProducts products={catalogProducts} branches={branches} defaultBranchId={user.branchId || activeBranchId} isHeadAdmin={isHeadAdmin} onCreateProduct={createProduct} onDeleteProduct={deleteProduct} />}
@@ -1116,13 +1150,115 @@ function Header({ eyebrow, title, subtitle }) {
 function Stat({ label, value, note }) {
   return <View style={styles.stat}><Text style={styles.statLabel}>{label}</Text><Text style={styles.statValue}>{value}</Text><Text style={styles.statNote}>{note}</Text></View>;
 }
-function AdminOverview({ summary, onNavigate, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
+function AdminOverview({ summary, reportError, onNavigate, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
+  const topProduct = summary?.topProducts?.[0];
   return <>
     <Header eyebrow="Operations" title="Overview" subtitle="Live operating metrics and sales reports for your selected branch scope." />
-    <View style={styles.stats}><Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} /><Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" /><Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} /><Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`Inventory value ${money(summary?.inventoryValue || 0)}`} /></View>
+    <View style={styles.stats}>
+      <Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} />
+      <Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" />
+      <Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} />
+      <Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`${summary?.totalStock || 0} units in stock`} />
+      {isHeadAdmin && <>
+        <Stat label="Registered users" value={String(summary?.users || 0)} note="All branches · excludes guests" />
+        <Stat label="Top-selling product" value={topProduct?.name || 'No sales yet'} note={topProduct ? `${money(topProduct.sales)} in sales` : 'No product sales recorded'} />
+      </>}
+    </View>
+    {reportError ? <View style={styles.notification}><Text style={styles.notificationTitle}>Analytics unavailable</Text><Text style={styles.subtitle}>{reportError}</Text></View> : null}
     <View style={styles.card}><Text style={styles.cardTitle}>Workspace shortcuts</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('branches')}><Text>Manage branches</Text></Pressable><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('team')}><Text>Manage employee accounts</Text></Pressable></View>
+    {isHeadAdmin && <AnalyticsCharts summary={summary} />}
     <Reports summary={summary} branches={branches} selectedBranchId={selectedBranchId} onSelectBranch={onSelectBranch} isHeadAdmin={isHeadAdmin} />
   </>;
+}
+function AnalyticsCharts({ summary }) {
+  const stockStatus = summary?.stockStatus || { lowStock: 0, healthy: 0 };
+  const salesByDay = summary?.salesByDay || [];
+  const topProducts = summary?.topProducts || [];
+  const highestProductSales = Math.max(0, ...topProducts.map((product) => Number(product.sales) || 0));
+  return <View style={styles.analyticsGrid}>
+    <View style={[styles.card, styles.analyticsPanel]}>
+      <Text style={styles.cardTitle}>Sales trend</Text>
+      <Text style={styles.subtitle}>Daily sales for the last 7 days</Text>
+      <SalesBarChart data={salesByDay} />
+    </View>
+    <View style={[styles.card, styles.analyticsPanel]}>
+      <Text style={styles.cardTitle}>Inventory stock health</Text>
+      <Text style={styles.subtitle}>Inventory items by stock status</Text>
+      <StockPieChart stockStatus={stockStatus} />
+    </View>
+    <View style={[styles.card, styles.analyticsPanel]}>
+      <Text style={styles.cardTitle}>Top products by sales</Text>
+      <Text style={styles.subtitle}>Ranked by recorded product revenue</Text>
+      {topProducts.length ? topProducts.map((product) => {
+        const percentage = highestProductSales ? Math.max(5, Number(product.sales) / highestProductSales * 100) : 0;
+        return <View style={styles.productChartRow} key={product.name}>
+          <View style={styles.productChartLabel}><Text style={styles.productChartName} numberOfLines={1}>{product.name}</Text><Text style={styles.productChartSales}>{money(product.sales)} · {product.units} sold</Text></View>
+          <View style={styles.chartTrack}><View style={[styles.chartFill, { width: `${percentage}%` }]} /></View>
+        </View>;
+      }) : <Text style={styles.chartEmpty}>No product sales recorded yet.</Text>}
+    </View>
+  </View>;
+}
+function SalesBarChart({ data }) {
+  if (!data.length) return <Text style={styles.chartEmpty}>No sales data is available yet.</Text>;
+  const maxSales = Math.max(1, ...data.map((item) => Number(item.sales) || 0));
+  const chartTop = 24;
+  const chartBottom = 174;
+  const chartHeight = chartBottom - chartTop;
+  return <Svg width="100%" height={210} viewBox="0 0 600 210">
+    {[0, 0.5, 1].map((fraction) => {
+      const y = chartBottom - chartHeight * fraction;
+      return <Line key={fraction} x1={42} y1={y} x2={590} y2={y} stroke="#eee6df" strokeWidth={1} />;
+    })}
+    {data.map((item, index) => {
+      const sales = Number(item.sales) || 0;
+      const barHeight = sales ? Math.max(3, chartHeight * sales / maxSales) : 0;
+      const x = 56 + index * 76;
+      return <React.Fragment key={item.date || `${item.day}-${index}`}>
+        <Rect x={x} y={chartBottom - barHeight} width={42} height={barHeight} rx={5} fill="#d9683c" />
+        <SvgText x={x + 21} y={198} fill="#82766e" fontSize={11} textAnchor="middle">{item.day}</SvgText>
+      </React.Fragment>;
+    })}
+  </Svg>;
+}
+function pieSlicePath(cx, cy, radius, startAngle, endAngle) {
+  const startX = cx + radius * Math.cos(startAngle);
+  const startY = cy + radius * Math.sin(startAngle);
+  const endX = cx + radius * Math.cos(endAngle);
+  const endY = cy + radius * Math.sin(endAngle);
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY} Z`;
+}
+function StockPieChart({ stockStatus }) {
+  const slices = [
+    { label: 'Healthy stock', value: stockStatus.healthy, color: '#71815f' },
+    { label: 'Low stock', value: stockStatus.lowStock, color: '#d9683c' },
+  ].filter((slice) => slice.value > 0);
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  if (!total) return <Text style={styles.chartEmpty}>No inventory data is available yet.</Text>;
+  let startAngle = -Math.PI / 2;
+  return <View style={styles.stockChart}>
+    <Svg width={164} height={164} viewBox="0 0 164 164">
+      {slices.length === 1
+        ? <Circle cx={82} cy={82} r={72} fill={slices[0].color} />
+        : slices.map((slice) => {
+          const endAngle = startAngle + 2 * Math.PI * slice.value / total;
+          const path = pieSlicePath(82, 82, 72, startAngle, endAngle);
+          startAngle = endAngle;
+          return <Path key={slice.label} d={path} fill={slice.color} stroke="#fffefa" strokeWidth={2} />;
+        })}
+    </Svg>
+    <View style={styles.stockLegend}>
+      <Text style={styles.stockTotal}>{total} items</Text>
+      {[
+        { label: 'Healthy stock', value: stockStatus.healthy, color: '#71815f' },
+        { label: 'Low stock', value: stockStatus.lowStock, color: '#d9683c' },
+      ].map((item) => <View style={styles.stockLegendItem} key={item.label}>
+        <View style={[styles.legendSwatch, { backgroundColor: item.color }]} />
+        <Text style={styles.stockLegendText}>{item.label} · {item.value}</Text>
+      </View>)}
+    </View>
+  </View>;
 }
 function Branches({ branches, selectedBranchId, onSelectBranch, onCreateBranch, onToggleBranch }) {
   const [name, setName] = useState('');
@@ -2264,6 +2400,21 @@ const styles = StyleSheet.create({
   statLabel: { color: '#82766e', fontSize: 11 },
   statValue: { color: '#30251f', fontSize: 24, fontWeight: '700', marginTop: 13 },
   statNote: { color: '#71815f', fontSize: 10, marginTop: 5 },
+  analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 },
+  analyticsPanel: { flexGrow: 1, flexBasis: 340, marginBottom: 0 },
+  chartEmpty: { color: '#82766e', fontSize: 12, paddingVertical: 28, textAlign: 'center' },
+  stockChart: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 12 },
+  stockLegend: { gap: 10 },
+  stockTotal: { color: '#30251f', fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  stockLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  legendSwatch: { width: 10, height: 10, borderRadius: 5 },
+  stockLegendText: { color: '#82766e', fontSize: 11 },
+  productChartRow: { marginTop: 16 },
+  productChartLabel: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginBottom: 7 },
+  productChartName: { flex: 1, color: '#30251f', fontSize: 12, fontWeight: '600' },
+  productChartSales: { color: '#82766e', fontSize: 10 },
+  chartTrack: { height: 8, backgroundColor: '#f0ebe5', borderRadius: 5, overflow: 'hidden' },
+  chartFill: { height: 8, backgroundColor: '#d9683c', borderRadius: 5 },
   card: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 14, padding: 20, marginBottom: 16 },
   cardTitle: { color: '#30251f', fontSize: 14, fontWeight: '700', marginBottom: 7 },
   forecastTitle: { color: '#fff', backgroundColor: '#33241e', padding: 16, fontFamily: 'Georgia', fontSize: 20, marginVertical: 12, borderRadius: 10 },

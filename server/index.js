@@ -305,24 +305,64 @@ app.get('/api/admin/reports/summary', async (req, res) => {
     const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin']);
     if (!result) return;
     const branchId = ['admin', 'head_admin'].includes(result.profile.role) ? req.query.branchId || null : result.profile.branch_id;
-    let orderQuery = (supabaseAdmin || supabase).from('orders').select('id,total,customer_id,order_items(quantity,unit_price,products(unit_cost))');
+    let orderQuery = (supabaseAdmin || supabase).from('orders')
+      .select('id,total,customer_id,status,created_at,order_items(quantity,unit_price,product_name,is_promo,products(unit_cost))');
     let stockQuery = (supabaseAdmin || supabase).from('inventory').select('quantity,low_stock_threshold,unit_cost');
+    let userQuery = (supabaseAdmin || supabase).from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'guest');
     if (branchId) {
       orderQuery = orderQuery.eq('branch_id', branchId);
       stockQuery = stockQuery.eq('branch_id', branchId);
     }
-    const [{ data: orders, error: orderError }, { data: stock, error: stockError }] = await Promise.all([orderQuery, stockQuery]);
+    const [
+      { data: orders, error: orderError },
+      { data: stock, error: stockError },
+      { count: users, error: userError },
+    ] = await Promise.all([orderQuery, stockQuery, userQuery]);
     if (orderError) throw orderError;
     if (stockError) throw stockError;
-    const sales = orders.reduce((sum, order) => sum + Number(order.total), 0);
-    const costs = orders.reduce((sum, order) => sum + order.order_items.reduce((itemSum, item) => itemSum + Number(item.products?.unit_cost || 0) * item.quantity, 0), 0);
+    if (userError) throw userError;
+    const salesOrders = orders.filter((order) => order.status !== 'cancelled');
+    const sales = salesOrders.reduce((sum, order) => sum + Number(order.total), 0);
+    const costs = salesOrders.reduce((sum, order) => sum + order.order_items.reduce((itemSum, item) => itemSum + Number(item.products?.unit_cost || 0) * item.quantity, 0), 0);
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const firstDay = new Date(today);
+    firstDay.setUTCDate(firstDay.getUTCDate() - 6);
+    const dailySales = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(firstDay);
+      date.setUTCDate(firstDay.getUTCDate() + index);
+      return {
+        date: date.toISOString().slice(0, 10),
+        day: date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+        sales: 0,
+      };
+    });
+    const dailySalesByDate = new Map(dailySales.map((day) => [day.date, day]));
+    const productSales = new Map();
+    for (const order of salesOrders) {
+      const day = dailySalesByDate.get(order.created_at.slice(0, 10));
+      if (day) day.sales += Number(order.total);
+      for (const item of order.order_items) {
+        if (item.is_promo) continue;
+        const product = productSales.get(item.product_name) || { name: item.product_name, units: 0, sales: 0 };
+        product.units += item.quantity;
+        product.sales += Number(item.unit_price) * item.quantity;
+        productSales.set(item.product_name, product);
+      }
+    }
+    const lowStock = stock.filter((item) => item.quantity <= item.low_stock_threshold).length;
     res.json({
       branchId,
       sales,
-      orders: orders.length,
-      averageOrder: orders.length ? sales / orders.length : 0,
-      customers: new Set(orders.map((order) => order.customer_id).filter(Boolean)).size,
-      lowStock: stock.filter((item) => item.quantity <= item.low_stock_threshold).length,
+      orders: salesOrders.length,
+      averageOrder: salesOrders.length ? sales / salesOrders.length : 0,
+      customers: new Set(salesOrders.map((order) => order.customer_id).filter(Boolean)).size,
+      users: users || 0,
+      totalStock: stock.reduce((sum, item) => sum + item.quantity, 0),
+      stockStatus: { lowStock, healthy: stock.length - lowStock },
+      salesByDay: dailySales,
+      topProducts: [...productSales.values()].sort((a, b) => b.sales - a.sales).slice(0, 5),
+      lowStock,
       inventoryValue: stock.reduce((sum, item) => sum + Number(item.unit_cost) * item.quantity, 0),
       costOfGoods: costs,
       grossProfit: sales - costs,
