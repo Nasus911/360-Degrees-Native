@@ -142,6 +142,7 @@ function AppContent() {
   const [accounts, setAccounts] = useState(demoAccounts);
   const [catalogProducts, setCatalogProducts] = useState(products);
   const [promotions, setPromotions] = useState([]);
+  const [dismissedPromoKey, setDismissedPromoKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState('');
   const [reportSummary, setReportSummary] = useState(null);
@@ -150,6 +151,7 @@ function AppContent() {
   const [page, setPage] = useState('overview');
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartFeedback, setCartFeedback] = useState(null);
   const [search, setSearch] = useState('');
   const [orders, setOrders] = useState([]);
   const [localActivityLogs, setLocalActivityLogs] = useState([]);
@@ -164,12 +166,23 @@ function AppContent() {
   const drawerWidth = Math.min(width * 0.82, 320);
   const drawerPosition = useRef(new Animated.Value(-drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const cartButtonScale = useRef(new Animated.Value(1)).current;
+  const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
+  const cartFeedbackTranslateY = useRef(new Animated.Value(10)).current;
+  const cartFeedbackTimer = useRef(null);
   const drawerHasOpened = useRef(false);
   const config = roleConfig[role];
   const isHeadAdmin = role === 'admin' || role === 'head_admin';
   const branchProducts = useMemo(() => catalogProducts.filter((product) => product.category !== 'Inventory'
     && (!product.branch_id || !activeBranchId || product.branch_id === activeBranchId)), [activeBranchId, catalogProducts]);
   const visibleProducts = useMemo(() => branchProducts.filter((product) => product.name.toLowerCase().includes(search.toLowerCase())), [branchProducts, search]);
+
+  useEffect(() => () => {
+    if (cartFeedbackTimer.current) clearTimeout(cartFeedbackTimer.current);
+    cartButtonScale.stopAnimation();
+    cartFeedbackOpacity.stopAnimation();
+    cartFeedbackTranslateY.stopAnimation();
+  }, [cartButtonScale, cartFeedbackOpacity, cartFeedbackTranslateY]);
 
   useEffect(() => {
     if (!supabase || !user) return;
@@ -490,13 +503,38 @@ function AppContent() {
     }} />;
   }
 
-  const addToCart = (product, customization = { size: 'regular', milk: 'dairy', sweetness: 100, extraEspresso: false }) => setCart((current) => {
+  const showCartFeedback = (productName) => {
+    if (cartFeedbackTimer.current) clearTimeout(cartFeedbackTimer.current);
+    cartButtonScale.stopAnimation();
+    cartFeedbackOpacity.stopAnimation();
+    cartFeedbackTranslateY.stopAnimation();
+    cartButtonScale.setValue(0.88);
+    cartFeedbackOpacity.setValue(0);
+    cartFeedbackTranslateY.setValue(10);
+    setCartFeedback({ productName });
+    Animated.parallel([
+      Animated.timing(cartFeedbackOpacity, { toValue: 1, duration: 160, useNativeDriver: false }),
+      Animated.timing(cartFeedbackTranslateY, { toValue: 0, duration: 160, useNativeDriver: false }),
+      Animated.sequence([
+        Animated.spring(cartButtonScale, { toValue: 1.12, speed: 28, bounciness: 10, useNativeDriver: false }),
+        Animated.spring(cartButtonScale, { toValue: 1, speed: 22, bounciness: 10, useNativeDriver: false }),
+      ]),
+    ]).start();
+    cartFeedbackTimer.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(cartFeedbackOpacity, { toValue: 0, duration: 220, useNativeDriver: false }),
+        Animated.timing(cartFeedbackTranslateY, { toValue: 8, duration: 220, useNativeDriver: false }),
+      ]).start(({ finished }) => {
+        if (finished) setCartFeedback(null);
+      });
+    }, 1500);
+  };
+  const addToCart = (product, customization = { size: 'regular', milk: 'dairy', sweetness: 100, extraEspresso: false }) => {
     const priceAdjustment = (customization.size === 'large' ? 50 : 0)
       + (customization.milk === 'oat' ? 35 : 0)
       + (customization.extraEspresso ? 50 : 0);
     const customizationKey = JSON.stringify(customization);
     const id = `${product.id}:${customizationKey}`;
-    const existing = current.find((line) => line.id === id);
     const item = {
       ...product,
       id,
@@ -506,10 +544,14 @@ function AppContent() {
       customization,
       priceAdjustment,
     };
-    return existing
-      ? current.map((line) => (line.id === id ? { ...line, quantity: line.quantity + 1 } : line))
-      : [...current, item];
-  });
+    setCart((current) => {
+      const existing = current.find((line) => line.id === id);
+      return existing
+        ? current.map((line) => (line.id === id ? { ...line, quantity: line.quantity + 1 } : line))
+        : [...current, item];
+    });
+    showCartFeedback(product.name);
+  };
   const signOut = async () => {
     if (supabase) await supabase.auth.signOut();
     setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch(''); setNotifications([]);
@@ -846,17 +888,18 @@ function AppContent() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.app, isMobile && styles.appMobile]}>
+        {(role === 'customer' || role === 'guest') && <Image source={require('./assets/cafe-background.png')} resizeMode="cover" style={styles.accountBackgroundImage} pointerEvents="none" accessible={false} />}
         {isMobile && <Animated.View pointerEvents={menuOpen ? 'auto' : 'none'} style={[styles.drawerBackdrop, { opacity: backdropOpacity }]}>
           <Pressable style={styles.drawerBackdropPressable} onPress={() => setMenuOpen(false)} accessibilityLabel="Close navigation menu" />
         </Animated.View>}
         <Animated.View style={[styles.sidebar, isMobile && styles.sidebarMobile, isMobile && { width: drawerWidth, transform: [{ translateX: drawerPosition }] }]}>
-          <View style={styles.brand}><Text style={styles.brandMark}>360</Text><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>LIPA BRANCH</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
+          <View style={styles.brand}><BrandLogo size={isMobile ? Math.min(44, Math.max(34, width * 0.11)) : Math.min(60, Math.max(44, width * 0.055))} /><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>LIPA BRANCH</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
           <Text style={styles.label}>{role === 'customer' ? 'Your coffee shop' : `${config.label} workspace`}</Text>
           <View style={styles.nav}>{config.pages.map(([id, label, icon]) => <Pressable key={id} onPress={() => navigate(id)} style={[styles.navButton, page === id && styles.navButtonActive]}><Text style={styles.navIcon}>{icon}</Text><Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text></Pressable>)}</View>
           <View style={styles.sidebarFooter}><Text style={styles.store}>Lipa Branch · Lipa City</Text><Text style={styles.sidebarMuted}>Open today until 10:00 PM</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
         </Animated.View>
         <View style={styles.main}>
-          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><Text style={styles.mobileBrandMark}>360</Text><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
+          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
           <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
           <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
             {page === 'overview' && <AdminOverview summary={reportSummary} reportError={reportError} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
@@ -873,17 +916,23 @@ function AppContent() {
             {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
             {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} statusError={orderStatusError} />}
             {page === 'receipts' && <Receipts orders={orders} />}
-            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} />}
+            {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} dismissedPromoKey={dismissedPromoKey} onDismissNotification={dismissNotification} onDismissPromotion={setDismissedPromoKey} onNavigate={navigate} onAdd={addToCart} />}
             {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
             {page === 'orders' && <Orders orders={orders} user={user} />}
             {page === 'wallet' && role === 'customer' && <Wallet user={user} onRedeem={redeemReward} />}
             {page === 'account' && <ManageAccount user={user} onSaveProfile={saveAccountProfile} onChangePassword={changeAccountPassword} />}
             {page === 'branch' && <BranchPicker branches={branches.filter((branch) => branch.is_active !== false)} selectedBranchId={activeBranchId} onSelectBranch={(id) => { setActiveBranchId(id); navigate('home'); }} />}
           </ScrollView>
+          {cartFeedback && <Animated.View accessibilityLiveRegion="polite" pointerEvents="none" style={[styles.cartFeedback, { bottom: (role === 'customer' || role === 'guest') ? 82 : 20, opacity: cartFeedbackOpacity, transform: [{ translateY: cartFeedbackTranslateY }] }]}>
+            <View style={styles.cartFeedbackCheck}><Text style={styles.cartFeedbackCheckText}>✓</Text></View>
+            <View style={styles.cartFeedbackCopy}><Text style={styles.cartFeedbackTitle}>Added to cart</Text><Text style={styles.cartFeedbackName} numberOfLines={1}>{cartFeedback.productName}</Text></View>
+          </Animated.View>}
           {(role === 'customer' || role === 'guest') && <>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.reduce((sum, item) => sum + item.quantity, 0)} items`} style={styles.cartFloatingButton} onPress={() => setCartOpen(true)}>
-              <Text style={styles.cartFloatingText}>Cart · {cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
-            </Pressable>
+            <Animated.View style={[styles.cartFloatingButton, { transform: [{ scale: cartButtonScale }] }]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.reduce((sum, item) => sum + item.quantity, 0)} items`} style={styles.cartFloatingPressable} onPress={() => setCartOpen(true)}>
+                <Text style={styles.cartFloatingText}>Cart · {cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
+              </Pressable>
+            </Animated.View>
             <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
               <View style={styles.cartModalBackdrop}>
                 <View style={styles.cartModalSheet}>
@@ -901,6 +950,10 @@ function AppContent() {
       </View>
     </SafeAreaView>
   );
+}
+
+function BrandLogo({ size = 48 }) {
+  return <Image source={require('./assets/brand-logo.png')} resizeMode="contain" style={[styles.brandLogoImage, { width: size, height: size }]} accessible accessibilityRole="image" accessibilityLabel="360 Degrees Cafe logo" />;
 }
 
 function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
@@ -947,13 +1000,16 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       .catch((guestError) => setError(guestError.message || 'Unable to start a guest account.'))
       .finally(() => setGuestSubmitting(false));
   };
-  return <SafeAreaView style={styles.authSafeArea}>
+  return <View style={styles.authRoot}>
+    <Image source={require('./assets/cafe-background.png')} resizeMode="cover" style={[StyleSheet.absoluteFillObject, styles.authBackgroundImage]} pointerEvents="none" accessible={false} />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.authBackgroundTint]} />
+    <SafeAreaView style={styles.authSafeArea}>
     <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView contentContainerStyle={[styles.authPage, width < 480 && styles.authPageCompact]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <View style={[styles.authCard, width < 480 && styles.authCardCompact]}>
         <View style={styles.authBrand}>
-          <Text style={styles.brandMark}>360</Text>
-          <View>
+        <BrandLogo size={width < 360 ? 56 : width < 480 ? 64 : 76} />
+        <View style={styles.authBrandDetails}>
             <Text style={styles.brandNameDark}>360 Degrees Specialty Cafe</Text>
             <Text style={styles.branchDark}>LIPA BRANCH</Text>
           </View>
@@ -991,7 +1047,8 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
-  </SafeAreaView>;
+    </SafeAreaView>
+  </View>;
 }
 
 function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
@@ -2111,7 +2168,7 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
     </View>
   </>;
 }
-function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, checkoutError, user, orders, notifications, onDismissNotification, onNavigate, onAdd }) {
+function CustomerHome({ products, promotions, branchId, branches, checkoutNotice, checkoutError, user, orders, notifications, dismissedPromoKey, onDismissNotification, onDismissPromotion, onNavigate, onAdd }) {
   const customerOrders = orders.filter((order) => order.customerId === user.id || order.customer_id === user.id || (user.email && order.customerEmail === user.email));
   const readyOrder = customerOrders.find((order) => order.status === 'Ready for pickup');
   const activeOrder = customerOrders.find((order) => !['Completed', 'Cancelled'].includes(order.status));
@@ -2122,7 +2179,10 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
     && (!promotion.starts_at || new Date(promotion.starts_at).getTime() <= currentTime)
     && (!promotion.ends_at || new Date(promotion.ends_at).getTime() > currentTime));
   const promotedProduct = activePromotion && products.find((product) => product.id === activePromotion.productId);
+  const promoKey = `${user.id}:${activePromotion?.id ?? activePromotion?.title ?? 'default-ube-promo'}`;
+  const promoDismissed = dismissedPromoKey === promoKey;
   const customerProducts = products.filter((product) => product.category !== 'Inventory');
+  const fallbackPromotionProduct = products.find((product) => product.name === 'Ube Cloud Latte') || customerProducts[0];
   const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Lipa Branch';
   return <>
     <Header eyebrow={`360 Degrees Specialty Cafe · ${branchName}`} title={`Good morning, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
@@ -2132,20 +2192,22 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
     {(readyOrder || readyNotification) && <View style={styles.notification}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text>{readyNotification && <Pressable onPress={() => onDismissNotification(readyNotification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable>}</View><Text style={styles.subtitle}>{readyNotification?.message || `Order #${readyOrder.id} is ready at ${branchName}.`}</Text></View>}
     {activeOrder && <View style={styles.card}><Text style={styles.cardTitle}>Order tracking · #{activeOrder.id}</Text><Text style={styles.pill}>{activeOrder.status}</Text>{pickupLabel(activeOrder) ? <Text style={styles.successText}>{pickupLabel(activeOrder)}</Text> : null}<Text style={styles.subtitle}>{activeOrder.items}</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('orders')}><Text>View order details</Text></Pressable></View>}
     {notifications.filter((notification) => !notification.title?.toLowerCase().includes('ready')).slice(0, 3).map((notification) => <View style={styles.notification} key={notification.id}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View><Text style={styles.subtitle}>{notification.message}</Text></View>)}
-    {activePromotion ? <View style={styles.promo}>
-      <Text style={styles.eyebrow}>Featured promotion</Text>
-      <Text style={styles.promoTitle}>{activePromotion.title}</Text>
-      <Text style={styles.subtitle}>{activePromotion.description}</Text>
-      {promotedProduct && <Text style={styles.promoPrice}>{promotedProduct.name} · {money(promotedProduct.price)}</Text>}
-      <Pressable style={styles.button} onPress={() => promotedProduct ? onAdd(promotedProduct) : onNavigate('menu')}>
-        <Text style={styles.buttonText}>{promotedProduct ? `Order ${promotedProduct.name}` : 'See menu'}</Text>
+    {!promoDismissed && <View style={styles.promo}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss promotion" onPress={() => onDismissPromotion(promoKey)} style={styles.promoDismissButton}>
+        <Text style={styles.promoDismissText}>×</Text>
       </Pressable>
-    </View> : <View style={styles.promo}>
-      <Text style={styles.eyebrow}>October special · from {money(215)}</Text>
-      <Text style={styles.promoTitle}>Ube cloud, made for slow afternoons.</Text>
-      <Text style={styles.subtitle}>Velvety ube, local espresso, and a sea-salt cream cap.</Text>
-      <Pressable style={styles.button} onPress={() => onAdd(products.find((product) => product.name === 'Ube Cloud Latte') || customerProducts[0])}>
-        <Text style={styles.buttonText}>Order Ube Cloud Latte</Text>
+      <Text style={styles.eyebrow}>{activePromotion ? 'Featured promotion' : `October special · from ${money(215)}`}</Text>
+      <Text style={styles.promoTitle}>{activePromotion?.title || 'Ube cloud, made for slow afternoons.'}</Text>
+      <Text style={styles.subtitle}>{activePromotion?.description || 'Velvety ube, local espresso, and a sea-salt cream cap.'}</Text>
+      {activePromotion && promotedProduct && <Text style={styles.promoPrice}>{promotedProduct.name} · {money(promotedProduct.price)}</Text>}
+      <Pressable style={styles.button} onPress={() => {
+        if (activePromotion) {
+          promotedProduct ? onAdd(promotedProduct) : onNavigate('menu');
+        } else {
+          onAdd(fallbackPromotionProduct);
+        }
+      }}>
+        <Text style={styles.buttonText}>{activePromotion ? promotedProduct ? `Order ${promotedProduct.name}` : 'See menu' : 'Order Ube Cloud Latte'}</Text>
       </Pressable>
     </View>}
     <View style={styles.card}>
@@ -2297,13 +2359,18 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
-  authSafeArea: { flex: 1, backgroundColor: '#33241e' },
+  authRoot: { flex: 1, backgroundColor: '#33241e', position: 'relative' },
+  authBackgroundImage: { opacity: 0.42 },
+  authBackgroundTint: { backgroundColor: 'rgba(51, 36, 30, 0.2)' },
+  authSafeArea: { flex: 1, backgroundColor: 'transparent' },
   authKeyboardAvoiding: { flex: 1 },
   authPage: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   authPageCompact: { padding: 14 },
-  authCard: { width: '100%', maxWidth: 460, backgroundColor: '#fffefa', borderRadius: 18, padding: 28 },
+  authCard: { width: '100%', maxWidth: 460, backgroundColor: 'rgba(255, 254, 250, 0.95)', borderRadius: 18, padding: 28 },
   authCardCompact: { padding: 20, borderRadius: 16 },
   authBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 24 },
+  authBrandDetails: { flex: 1, minWidth: 0 },
+  brandLogoImage: { aspectRatio: 1 },
   authTabs: { flexDirection: 'row', backgroundColor: '#f3eee8', borderRadius: 9, padding: 4, marginBottom: 20 },
   authTab: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 7 },
   authTabActive: { backgroundColor: '#d9683c' },
@@ -2350,13 +2417,13 @@ const styles = StyleSheet.create({
   demoHint: { color: '#82766e', fontSize: 11, textAlign: 'center', marginTop: 10 },
   app: { flex: 1, flexDirection: 'row', position: 'relative' },
   appMobile: { flexDirection: 'column' },
+  accountBackgroundImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%', opacity: 0.3 },
   sidebar: { width: 246, backgroundColor: '#33241e', padding: 20, minHeight: '100%' },
   drawerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 8, backgroundColor: 'rgba(20, 13, 10, 0.58)' },
   drawerBackdropPressable: { flex: 1 },
   sidebarMobile: { position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 10, minHeight: 0, padding: 18, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 8, height: 0 }, elevation: 14 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 26 },
   brandDetails: { flex: 1 },
-  brandMark: { backgroundColor: '#d9683c', color: '#fff', borderRadius: 12, padding: 9, fontSize: 18, fontWeight: '700' },
   brandName: { color: '#fff', fontFamily: 'Georgia', fontSize: 16, maxWidth: 155 },
   branch: { color: '#b9a99f', fontSize: 9, letterSpacing: 2, marginTop: 4 },
   label: { color: '#9f8c80', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 9, marginTop: 8 },
@@ -2372,7 +2439,7 @@ const styles = StyleSheet.create({
   person: { color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 17 },
   signOut: { marginTop: 16, alignSelf: 'flex-start', paddingVertical: 6 },
   signOutText: { color: '#e8c4a7', fontSize: 11, fontWeight: '700' },
-  main: { flex: 1, minWidth: 0 },
+  main: { flex: 1, minWidth: 0, position: 'relative' },
   topbar: { minHeight: 70, padding: 16, borderBottomWidth: 1, borderBottomColor: '#e9e0d7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   topbarMobile: { alignItems: 'flex-start', flexWrap: 'wrap' },
   topbarActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -2380,7 +2447,6 @@ const styles = StyleSheet.create({
   menuButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#402e26' },
   menuIcon: { color: '#fff', fontSize: 23, lineHeight: 25 },
   mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  mobileBrandMark: { backgroundColor: '#d9683c', color: '#fff', borderRadius: 9, paddingVertical: 7, paddingHorizontal: 8, fontSize: 14, fontWeight: '700' },
   mobileBrandName: { color: '#fff', fontFamily: 'Georgia', fontSize: 14 },
   mobileBranch: { color: '#b9a99f', fontSize: 8, letterSpacing: 1.5, marginTop: 2 },
   closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#402e26' },
@@ -2468,7 +2534,14 @@ const styles = StyleSheet.create({
   redemptionCode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 10, marginTop: 8, backgroundColor: '#fff', borderRadius: 8 },
   customerIdCard: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 16 },
   customerId: { color: '#30251f', fontSize: 16, fontWeight: '700', marginVertical: 5 },
-  cartFloatingButton: { position: 'absolute', right: 20, bottom: 18, zIndex: 5, minHeight: 52, minWidth: 126, backgroundColor: '#33241e', borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  cartFeedback: { position: 'absolute', right: 20, width: '90%', maxWidth: 360, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#bdcdb0', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8, zIndex: 6 },
+  cartFeedbackCheck: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#71815f', alignItems: 'center', justifyContent: 'center' },
+  cartFeedbackCheckText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  cartFeedbackCopy: { flex: 1, minWidth: 0 },
+  cartFeedbackTitle: { color: '#596849', fontSize: 12, fontWeight: '700' },
+  cartFeedbackName: { color: '#30251f', fontSize: 12, marginTop: 2 },
+  cartFloatingButton: { position: 'absolute', right: 20, bottom: 18, zIndex: 5, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  cartFloatingPressable: { minHeight: 52, minWidth: 126, backgroundColor: '#33241e', borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   cartFloatingText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   cartModalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12, backgroundColor: 'rgba(20, 13, 10, 0.62)' },
   cartModalSheet: { width: '100%', maxWidth: 560, maxHeight: '92%', backgroundColor: '#fbf8f3', borderRadius: 18, padding: 14 },
@@ -2485,7 +2558,9 @@ const styles = StyleSheet.create({
   price: { color: '#5f4031', fontWeight: '700', fontSize: 14 },
   total: { color: '#30251f', fontWeight: '700', fontSize: 18, textAlign: 'right', marginTop: 16 },
   pill: { backgroundColor: '#e7eddf', color: '#596849', paddingVertical: 6, paddingHorizontal: 9, borderRadius: 20, fontSize: 10, fontWeight: '700' },
-  promo: { backgroundColor: '#33241e', borderRadius: 14, padding: 22, marginBottom: 18 },
+  promo: { position: 'relative', backgroundColor: '#33241e', borderRadius: 14, padding: 22, paddingRight: 56, marginBottom: 18 },
+  promoDismissButton: { position: 'absolute', top: 8, right: 8, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: 'rgba(255, 255, 255, 0.14)', zIndex: 1 },
+  promoDismissText: { color: '#fff', fontSize: 24, lineHeight: 28 },
   promoTitle: { color: '#fff', fontFamily: 'Georgia', fontSize: 25, marginTop: 10, marginBottom: 8 },
   promoPrice: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 10 },
   reward: { backgroundColor: '#5f4031', borderRadius: 14, padding: 24 },
