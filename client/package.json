@@ -17,10 +17,11 @@
     "react-native-web": "^0.21.2"
   },
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "expo start --lan",
+    "start:tunnel": "expo start --tunnel",
+    "android": "expo start --android --lan",
+    "ios": "expo start --ios --lan",
+    "web": "expo start --web --lan"
   },
   "private": true,
   "devDependencies": {
