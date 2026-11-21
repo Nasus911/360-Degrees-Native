@@ -56,6 +56,12 @@ const demoAccounts = [
 ];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
+const cleanPhone = (value) => {
+  const text = String(value).replace(/[^\d+]/g, '');
+  return text.startsWith('+') ? `+${text.slice(1).replace(/\+/g, '')}` : text.replace(/\+/g, '');
+};
+const isValidPhone = (value) => /^(09\d{9}|\+639\d{9})$/.test(value);
+const PHONE_ERROR = 'Enter a valid mobile number: 09XXXXXXXXX or +639XXXXXXXXX.';
 const navIcons = {
   overview: 'grid-outline', branches: 'storefront-outline', inventory: 'cube-outline', products: 'cafe-outline',
   promotions: 'pricetag-outline', loyalty: 'gift-outline', team: 'people-outline', audit: 'list-outline',
@@ -879,28 +885,47 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
   const [error, setError] = useState('');
   const [guestSubmitting, setGuestSubmitting] = useState(false);
   const passwordRef = useRef(null);
+  const [invalid, setInvalid] = useState({});
+  const redField = { borderColor: '#d64545', backgroundColor: '#fff3f1', borderWidth: 1.5 };
+  const clearInvalid = (key) => setInvalid((current) => (current[key] ? { ...current, [key]: false } : current));
+  useEffect(() => { setInvalid({}); }, [mode]);
   const { width } = useWindowDimensions();
 
-  const submit = () => {
+    const submit = () => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return setError('Enter a valid email address.');
-    if (password.length < 8) return setError('Password must be at least 8 characters.');
+    const bad = {};
+    let message = '';
+    const fail = (field, text) => { bad[field] = true; if (!message) message = text; };
+    if (mode === 'register' && !name.trim()) fail('name', 'Enter your full name.');
+    if (!normalizedEmail) fail('email', 'Enter your email address.');
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) fail('email', 'Enter a valid email address.');
+       if (mode === 'register') {
+      if (!contactNumber) fail('contact', 'Enter a contact number.');
+      else if (!isValidPhone(contactNumber)) fail('contact', PHONE_ERROR);
+    }
+    if (!password) fail('password', 'Enter your password.');
+    else if (password.length < 8) fail('password', 'Password must be at least 8 characters.');
     if (mode === 'register') {
-      if (!name.trim()) return setError('Enter your full name.');
-      if (!contactNumber.trim()) return setError('Enter a contact number.');
-      if (password !== confirmPassword) return setError('Passwords do not match.');
-      if (accounts.some((account) => account.email === normalizedEmail)) return setError('An account with this email already exists.');
+      if (!confirmPassword) fail('confirm', 'Confirm your password.');
+      else if (password !== confirmPassword) fail('confirm', 'Passwords do not match.');
+      if (normalizedEmail && accounts.some((account) => account.email === normalizedEmail)) fail('email', 'An account with this email already exists.');
+    }
+    if (message) { setInvalid(bad); return setError(message); }
+    setInvalid({});
+    setError('');
+    if (mode === 'register') {
       return onRegister({ id: `customer-${Date.now()}`, name: name.trim(), email: normalizedEmail, password, role: 'customer', contactNumber: contactNumber.trim(), customerCode: `CS-${new Date().getFullYear()}-${String(accounts.filter((account) => account.role === 'customer').length + 1).padStart(4, '0')}` }).catch((submitError) => setError(submitError.message));
     }
     const account = accounts.find((item) => item.email === normalizedEmail && item.password === password);
-    if (!account) return setError('Email or password is incorrect.');
-    return onLogin(account).catch((submitError) => setError(submitError.message));
+    if (!account) { setInvalid({ email: true, password: true }); return setError('Email or password is incorrect.'); }
+    return onLogin(account).catch((submitError) => { setInvalid({ email: true, password: true }); setError(submitError.message); });
   };
 
   const switchMode = () => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); };
   const startGuestSession = () => {
     const fullName = guestName.trim();
-    if (fullName.length < 2 || fullName.length > 100) return setError('Enter your name (2–100 characters).');
+    if (fullName.length < 2 || fullName.length > 100) { setInvalid({ guest: true }); return setError('Enter your name (2–100 characters).'); }
+    setInvalid({});
     setGuestSubmitting(true);
     setError('');
     return onGuest(fullName)
@@ -932,12 +957,12 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
         <Text style={styles.eyebrow}>{mode === 'login' ? 'Welcome back' : mode === 'guest' ? 'Guest checkout' : 'Join 360 rewards'}</Text>
         <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : mode === 'guest' ? 'Who is picking up?' : 'Create your account'}</Text>
         <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : mode === 'guest' ? 'Enter your name so the barista can identify your order.' : 'New accounts start as customer accounts.'}</Text>
-        {mode === 'guest' && <TextInput value={guestName} onChangeText={setGuestName} placeholder="Your name *" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" autoCapitalize="words" style={styles.authInput} />}
-        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />}
-        {mode !== 'guest' && <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />}
-        {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
+                {mode === 'guest' && <TextInput value={guestName} onChangeText={(value) => { setGuestName(value); clearInvalid('guest'); }} placeholder="Your name *" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={[styles.authInput, invalid.guest && redField]} />}
+                {mode === 'register' && <TextInput value={name} onChangeText={(value) => { setName(value); clearInvalid('name'); }} placeholder="Full name *" autoCapitalize="words" style={[styles.authInput, invalid.name && redField]} />}
+                {mode !== 'guest' && <TextInput value={email} onChangeText={(value) => { setEmail(value); clearInvalid('email'); }} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={[styles.authInput, invalid.email && redField]} />}
+                {mode === 'register' && <TextInput value={contactNumber} onChangeText={(value) => { setContactNumber(value); clearInvalid('contact'); }} placeholder="Contact number *" keyboardType="phone-pad" style={[styles.authInput, invalid.contact && redField]} />}
+                {mode !== 'guest' && <PasswordInput inputRef={passwordRef} invalid={invalid.password} value={password} onChangeText={(value) => { setPassword(value); clearInvalid('password'); }} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />}
+                {mode === 'register' && <PasswordInput invalid={invalid.confirm} value={confirmPassword} onChangeText={(value) => { setConfirmPassword(value); clearInvalid('confirm'); }} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
         {authError ? <Text style={styles.formError}>{authError}</Text> : null}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
         {mode !== 'guest' ? <Pressable style={styles.authButton} onPress={submit}>
@@ -973,8 +998,8 @@ function BrandLogo({ size = 44 }) {
   </View>;
 }
 
-function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
-  return <View style={styles.passwordInputWrapper}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
+function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing, invalid }) {
+  return <View style={[styles.passwordInputWrapper, invalid && { borderColor: '#d64545', backgroundColor: '#fff3f1', borderWidth: 1.5 }]}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
 }
 
 function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranchId, onCreate, onToggleAccount }) {
@@ -997,7 +1022,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
     if (!name.trim()) return setError('Enter the account holder’s full name.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return setError('Enter a valid email address.');
     if (password.length < 8) return setError('Password must be at least 8 characters.');
-    if (!contactNumber.trim()) return setError('Enter a contact number.');
+        if (!isValidPhone(contactNumber.trim())) return setError(contactNumber.trim() ? PHONE_ERROR : 'Enter a contact number.');
     if (!address.trim()) return setError('Enter an address.');
     if (accountRole !== 'customer' && !branchId) return setError('Assign the employee to a branch.');
     if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) return setError('This email is already assigned to an account.');
@@ -1101,7 +1126,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
       <TextInput value={name} onChangeText={setName} placeholder="Full name *" style={styles.authInput} />
       <TextInput value={email} onChangeText={setEmail} placeholder="Unique email address *" autoCapitalize="none" keyboardType="email-address" style={styles.authInput} />
       <PasswordInput value={password} onChangeText={setPassword} placeholder="Temporary password (8+ characters) *" visible={showTemporaryPassword} onToggle={() => setShowTemporaryPassword((visible) => !visible)} />
-      <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />
+      <TextInput value={contactNumber} onChangeText={(value) => setContactNumber(cleanPhone(value))} placeholder="Contact number * (09171234567)" keyboardType="phone-pad" maxLength={13} style={styles.authInput} />
       <TextInput value={address} onChangeText={setAddress} placeholder="Complete address *" multiline style={[styles.authInput, styles.addressInput]} />
       {error ? <Text style={styles.formError}>{error}</Text> : null}
       <Pressable disabled={creating} style={[styles.buttonDark, creating && styles.disabled]} onPress={createAccount}>
@@ -2078,7 +2103,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
 
   const saveProfile = async () => {
     if (name.trim().length < 2) return setProfileError('Enter your full name.');
-    if (!contactNumber.trim()) return setProfileError('Enter a contact number.');
+        if (!isValidPhone(contactNumber.trim())) return setProfileError(contactNumber.trim() ? PHONE_ERROR : 'Enter a contact number.');
     setSavingProfile(true);
     setProfileError('');
     try {
@@ -2114,7 +2139,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
       <Text style={styles.cardTitle}>Profile details</Text>
       <TextInput value={name} onChangeText={setName} placeholder="Full name *" autoCapitalize="words" style={styles.authInput} />
       <TextInput value={user.email} editable={false} style={[styles.authInput, styles.readOnlyInput]} />
-      <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />
+      <TextInput value={contactNumber} onChangeText={(value) => setContactNumber(cleanPhone(value))} placeholder="Contact number * (09171234567)" keyboardType="phone-pad" maxLength={13} style={styles.authInput} />
       <TextInput value={address} onChangeText={setAddress} placeholder="Address" multiline style={[styles.authInput, styles.addressInput]} />
       {profileError ? <Text style={styles.formError}>{profileError}</Text> : null}
       <Pressable disabled={savingProfile} style={[styles.buttonDark, savingProfile && styles.disabled]} onPress={saveProfile}>
