@@ -4,13 +4,14 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  TextInput as NativeTextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -19,7 +20,22 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
+import { requestApi, requestPublicApi } from './lib/api';
+import IdentityVerification from './IdentityVerification';
 import QRCode from 'react-native-qrcode-svg';
+
+const TextInput = React.forwardRef(function AppTextInput({ style, placeholderTextColor, ...props }, ref) {
+  return (
+    <NativeTextInput
+      {...props}
+      ref={ref}
+      placeholderTextColor={placeholderTextColor || '#82766e'}
+      selectionColor="#b94f2b"
+      underlineColorAndroid="transparent"
+      style={[styles.textInputDefaults, style]}
+    />
+  );
+});
 
 const products = [
   { id: 1, name: 'Iced Spanish Latte', category: 'Coffee', price: 185, stock: 38, emoji: '🥤', description: 'Local espresso, condensed milk, silky and balanced.' },
@@ -41,7 +57,7 @@ const roleConfig = {
   cashier: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
   barista: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
   staff: { label: 'Barista/Cashier', person: 'Luis Reyes', subtitle: 'Barista/Cashier · Shift A', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
-  customer: { label: 'Customer', person: '', subtitle: '360 Rewards member', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['wallet', 'Wallet & rewards', '◎'], ['account', 'Manage account', '♙'], ['branch', 'Pickup branch', '⌖']] },
+  customer: { label: 'Customer', person: '', subtitle: '360 Rewards member', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['wallet', 'Wallet & rewards', '◎'], ['identity-verification', 'Identity verification', 'ID'], ['account', 'Manage account', '♙'], ['branch', 'Pickup branch', '⌖']] },
   guest: { label: 'Guest', person: '', subtitle: 'Temporary guest account · no loyalty points', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['branch', 'Pickup branch', '⌖']] },
 };
 
@@ -52,7 +68,6 @@ const demoAccounts = [
 ];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
-const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 const orderStatusLabels = {
   new: 'New',
   preparing: 'Preparing',
@@ -98,34 +113,6 @@ const toPromotion = (promotion) => ({
   getQuantity: promotion.get_quantity || promotion.getQuantity || 1,
   discountValue: Number(promotion.discount_value || promotion.discountValue || 0),
 });
-
-async function requestApi(path, options = {}) {
-  if (!supabase || !apiUrl) throw new Error('Configure Supabase and EXPO_PUBLIC_API_URL first.');
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError) throw sessionError;
-  if (!session?.access_token) throw new Error('Your session has expired. Sign in again.');
-  const response = await fetch(`${apiUrl.replace(/\/+$/, '')}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...options.headers },
-  });
-  const responseText = await response.text();
-  let result;
-  try {
-    result = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    const responseKind = /^\s*</.test(responseText) ? 'an HTML page' : 'an invalid response';
-    const requestRoute = `${(options.method || 'GET').toUpperCase()} ${path}`;
-    throw new Error(`The API returned ${responseKind} for ${requestRoute} (HTTP ${response.status}). Check that EXPO_PUBLIC_API_URL points to the Express API server with this route.`);
-  }
-  if (!response.ok) {
-    const errorMessage = result && typeof result === 'object' && typeof result.error === 'string'
-      ? result.error
-      : 'The request could not be completed.';
-    throw new Error(errorMessage);
-  }
-  return result;
-}
-
 
 export default function App() {
   return <SafeAreaProvider>
@@ -366,6 +353,46 @@ function AppContent() {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
+    const processAuthUrl = async (url) => {
+      if (!url) return;
+      try {
+        const normalizedUrl = url.includes('#') ? url.replace('#', '?') : url;
+        const parsed = new URL(normalizedUrl);
+        const code = parsed.searchParams.get('code');
+        const accessToken = parsed.searchParams.get('access_token');
+        const refreshToken = parsed.searchParams.get('refresh_token');
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+        } else if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) throw error;
+        } else {
+          return;
+        }
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (active && session?.user) {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          if (profileError) throw profileError;
+          if (profile && roleConfig[profile.role]) {
+            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
+            setRole(profile.role);
+            setPage(roleConfig[profile.role].initialPage);
+            setAuthError('');
+          }
+        }
+      } catch (error) {
+        if (active) setAuthError(error.message || 'Unable to confirm your email.');
+      }
+    };
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -390,8 +417,12 @@ function AppContent() {
         if (active) setAuthLoading(false);
       }
     };
-    restoreSession();
-    return () => { active = false; };
+    const linkSubscription = Linking.addEventListener('url', ({ url }) => processAuthUrl(url));
+    Linking.getInitialURL().then((url) => processAuthUrl(url)).finally(restoreSession);
+    return () => {
+      active = false;
+      linkSubscription.remove();
+    };
   }, []);
 
   if (!user || !config) {
@@ -399,14 +430,13 @@ function AppContent() {
     return <AuthScreen accounts={supabase ? [] : accounts} authError={authError} onGuest={async (fullName) => {
       let guest;
       if (supabase) {
-        if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address to start a guest account.');
-        const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/auth/guest`, {
+        const result = await requestPublicApi('/api/auth/guest', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fullName }),
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Unable to start a guest account.');
+        if (!result?.session || !result?.profile?.id) {
+          throw new Error('The guest service returned an incomplete account response. Try again.');
+        }
         const { error } = await supabase.auth.setSession(result.session);
         if (error) throw error;
         guest = {
@@ -442,9 +472,17 @@ function AppContent() {
         const { data, error } = await supabase.auth.signUp({
           email: account.email,
           password: account.password,
-          options: { data: { full_name: account.name, contact_number: account.contactNumber } },
+          options: {
+            data: { full_name: account.name, contact_number: account.contactNumber },
+            emailRedirectTo: '360degrees://auth/callback',
+          },
         });
-        if (error) throw error;
+        if (error) {
+          if (error.message?.toLowerCase().includes('email rate limit')) {
+            throw new Error('Email sending is temporarily unavailable. Please try again later or contact support.');
+          }
+          throw error;
+        }
         if (!data.session) throw new Error('Registration succeeded. Confirm your email before signing in.');
         const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
         if (profileError) throw profileError;
@@ -482,17 +520,10 @@ function AppContent() {
   };
   const saveAccountProfile = async ({ fullName, contactNumber, address }) => {
     if (supabase) {
-      if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address to manage your account.');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-      if (!session?.access_token) throw new Error('Your session has expired. Sign in again.');
-      const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/me`, {
+      const result = await requestApi('/api/me', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ fullName, contactNumber, address }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Unable to update account details.');
       setUser((current) => ({ ...current, name: result.full_name, contactNumber: result.contact_number, address: result.address || '' }));
       return;
     }
@@ -843,6 +874,7 @@ function AppContent() {
             {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
             {page === 'orders' && <Orders orders={orders} user={user} />}
             {page === 'wallet' && role === 'customer' && <Wallet user={user} onRedeem={redeemReward} />}
+            {page === 'identity-verification' && role === 'customer' && <IdentityVerification user={user} />}
             {page === 'account' && <ManageAccount user={user} onSaveProfile={saveAccountProfile} onChangePassword={changeAccountPassword} />}
             {page === 'branch' && <BranchPicker branches={branches.filter((branch) => branch.is_active !== false)} selectedBranchId={activeBranchId} onSelectBranch={(id) => { setActiveBranchId(id); navigate('home'); }} />}
           </ScrollView>
@@ -935,10 +967,10 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
         <Text style={styles.eyebrow}>{mode === 'login' ? 'Welcome back' : mode === 'guest' ? 'Guest checkout' : 'Join 360 rewards'}</Text>
         <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : mode === 'guest' ? 'Who is picking up?' : 'Create your account'}</Text>
         <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : mode === 'guest' ? 'Enter your name so the barista can identify your order.' : 'New accounts start as customer accounts.'}</Text>
-        {mode === 'guest' && <TextInput value={guestName} onChangeText={setGuestName} placeholder="Your name *" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" autoCapitalize="words" style={styles.authInput} />}
-        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />}
+        {mode === 'guest' && <TextInput value={guestName} onChangeText={setGuestName} placeholder="Your name *" placeholderTextColor="#82766e" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={styles.authInput} />}
+        {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" placeholderTextColor="#82766e" autoCapitalize="words" style={styles.authInput} />}
+        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#82766e" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />}
+        {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" placeholderTextColor="#82766e" keyboardType="phone-pad" style={styles.authInput} />}
         {mode !== 'guest' && <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />}
         {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
         {authError ? <Text style={styles.formError}>{authError}</Text> : null}
@@ -961,7 +993,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
 }
 
 function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
-  return <View style={styles.passwordInputWrapper}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
+  return <View style={styles.passwordInputWrapper}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#82766e" secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
 }
 
 function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranchId, onCreate, onToggleAccount }) {
@@ -1002,13 +1034,8 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
         address: address.trim(),
       };
       if (supabase) {
-        if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address to create accounts.');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        if (!session?.access_token) throw new Error('Your admin session has expired. Sign in again.');
-        const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/admin/accounts`, {
+        const result = await requestApi('/api/admin/accounts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
           body: JSON.stringify({
             fullName: account.name,
             email: account.email,
@@ -1019,8 +1046,6 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
             address: account.address,
           }),
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Unable to create account.');
         account = {
           id: result.id,
           name: result.full_name,
@@ -2160,6 +2185,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
 }
 
 const styles = StyleSheet.create({
+  textInputDefaults: { color: '#30251f' },
   safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
   authSafeArea: { flex: 1, backgroundColor: '#33241e' },
   authKeyboardAvoiding: { flex: 1 },
@@ -2179,7 +2205,7 @@ const styles = StyleSheet.create({
   authTitleCompact: { fontSize: 26 },
   authSubtitle: { color: '#82766e', fontSize: 13, lineHeight: 20, marginBottom: 20 },
   authSubtitleCompact: { marginBottom: 14 },
-  authInput: { minHeight: 48, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, marginBottom: 12, fontSize: 14 },
+  authInput: { minHeight: 48, color: '#30251f', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, marginBottom: 12, fontSize: 14 },
   loyaltyInputWrapper: { position: 'relative', marginBottom: 12 },
   loyaltyRuleInput: { minHeight: 62, marginBottom: 0, paddingTop: 8, paddingBottom: 23, textAlignVertical: 'top' },
   loyaltyInputDescription: { position: 'absolute', left: 14, right: 14, bottom: 7, color: '#82766e', fontSize: 11 },
@@ -2197,7 +2223,7 @@ const styles = StyleSheet.create({
   fieldRow: { flexDirection: 'row', gap: 10 },
   fieldHalf: { flex: 1 },
   passwordInputWrapper: { minHeight: 48, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, marginBottom: 12 },
-  passwordInput: { flex: 1, minHeight: 46, paddingHorizontal: 14, fontSize: 14 },
+  passwordInput: { flex: 1, minHeight: 46, color: '#30251f', paddingHorizontal: 14, fontSize: 14 },
   passwordToggle: { paddingHorizontal: 14, paddingVertical: 13 },
   passwordToggleText: { color: '#b94f2b', fontSize: 12, fontWeight: '700' },
   authButton: { backgroundColor: '#d9683c', padding: 14, borderRadius: 9, alignItems: 'center', marginTop: 6 },

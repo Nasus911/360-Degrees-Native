@@ -3,6 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const { randomBytes, randomUUID } = require('node:crypto');
+const {
+  canSubmitVerification,
+  isVerificationObjectPath,
+  publicVerification,
+  validateReviewedFields,
+} = require('./identityVerification');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -16,6 +22,11 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
+const IDENTITY_BUCKET = 'identity-verification';
+const IDENTITY_CONSENT_VERSION = 'ph-national-id-v2';
+const MAX_IDENTITY_IMAGE_BYTES = 12 * 1024 * 1024;
+const IDENTITY_PROCESSOR_URL = process.env.IDENTITY_VERIFICATION_URL;
+const IDENTITY_PROCESSOR_TOKEN = process.env.IDENTITY_VERIFICATION_TOKEN;
 
 function requireConfiguration() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY || process.env.SUPABASE_URL === 'https://supabase.co' || process.env.SUPABASE_KEY === 'your-anon-public-api-key-here') {
@@ -73,6 +84,459 @@ async function requireUser(req, res, roles = []) {
   return { user, profile };
 }
 
+function getIdentityAdmin(res) {
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Identity verification requires the server-only Supabase service-role key.' });
+    return false;
+  }
+  return true;
+}
+
+function getIdentityProcessor(res) {
+  if (!getIdentityAdmin(res)) return false;
+  if (!IDENTITY_PROCESSOR_URL || !IDENTITY_PROCESSOR_TOKEN) {
+    res.status(503).json({ error: 'The identity verification processor is not configured.' });
+    return false;
+  }
+  return true;
+}
+
+async function findIdentityVerification(id, userId) {
+  const { data, error } = await supabaseAdmin
+    .from('identity_verifications')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (data && data.consent_version !== IDENTITY_CONSENT_VERSION) return null;
+  if (data && data.status !== 'submitted' && Date.parse(data.expires_at) <= Date.now()) return null;
+  return data;
+}
+
+async function downloadIdentityImage(path) {
+  const { data, error } = await supabaseAdmin.storage.from(IDENTITY_BUCKET).download(path);
+  if (error || !data) throw new Error('Stored identity image is unavailable.');
+  if (data.size > MAX_IDENTITY_IMAGE_BYTES) throw new Error('Stored identity image exceeds the size limit.');
+  return data;
+}
+
+async function sendImageToProcessor(route, fields) {
+  const form = new FormData();
+  for (const [fieldName, image] of Object.entries(fields)) {
+    const bytes = await image.blob.arrayBuffer();
+    form.append(fieldName, new Blob([bytes], { type: image.blob.type || 'image/jpeg' }), image.filename);
+  }
+  const response = await fetch(`${IDENTITY_PROCESSOR_URL.replace(/\/+$/, '')}${route}`, {
+    method: 'POST',
+    headers: { 'X-Verification-Token': IDENTITY_PROCESSOR_TOKEN },
+    body: form,
+    signal: AbortSignal.timeout(90000),
+  });
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error('The identity verification processor returned an invalid response.');
+  }
+  if (!response.ok) {
+    const error = new Error(typeof payload.detail === 'string' ? payload.detail : 'The identity verification processor could not process the image.');
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function removeIdentityImages(paths) {
+  const existingPaths = paths.filter(Boolean);
+  if (!existingPaths.length) return;
+  const { error } = await supabaseAdmin.storage.from(IDENTITY_BUCKET).remove(existingPaths);
+  if (error) throw error;
+}
+
+async function purgeExpiredIdentityVerifications() {
+  if (!supabaseAdmin) return;
+  const { data, error } = await supabaseAdmin
+    .from('identity_verifications')
+    .select('id,id_object_path,selfie_object_path')
+    .neq('status', 'submitted')
+    .lt('expires_at', new Date().toISOString())
+    .limit(50);
+  if (error) throw error;
+  for (const row of data || []) {
+    await removeIdentityImages([row.id_object_path, row.selfie_object_path]);
+    const { error: deleteError } = await supabaseAdmin
+      .from('identity_verifications')
+      .delete()
+      .eq('id', row.id);
+    if (deleteError) throw deleteError;
+  }
+}
+
+async function clearMatchedIdentityImages(row) {
+  if (!row.cleanup_pending) return row;
+  await removeIdentityImages([row.id_object_path, row.selfie_object_path]);
+  const { data, error } = await supabaseAdmin
+    .from('identity_verifications')
+    .update({
+      id_object_path: null,
+      selfie_object_path: null,
+      cleanup_pending: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+app.post('/api/identity-verifications', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityProcessor(res)) return;
+    if (req.body?.consentAccepted !== true || req.body?.consentVersion !== IDENTITY_CONSENT_VERSION) {
+      return res.status(400).json({ error: 'Review and accept the current identity-processing notice before continuing.' });
+    }
+
+    await purgeExpiredIdentityVerifications();
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('identity_verifications')
+      .select('*')
+      .eq('user_id', result.user.id)
+      .neq('status', 'submitted')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing?.consent_version === IDENTITY_CONSENT_VERSION) {
+      return res.json(publicVerification(existing));
+    }
+    if (existing) {
+      await removeIdentityImages([existing.id_object_path, existing.selfie_object_path]);
+      const { error: deleteError } = await supabaseAdmin
+        .from('identity_verifications')
+        .delete()
+        .eq('id', existing.id);
+      if (deleteError) throw deleteError;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .insert({
+        user_id: result.user.id,
+        document_type: 'philippine_national_id',
+        status: 'awaiting_id',
+        consent_version: IDENTITY_CONSENT_VERSION,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    res.status(201).json(publicVerification(data));
+  } catch (error) {
+    console.error('Identity verification start failed.');
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to start identity verification.' });
+  }
+});
+
+app.get('/api/identity-verifications/current', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityAdmin(res)) return;
+    await purgeExpiredIdentityVerifications();
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .select('*')
+      .eq('user_id', result.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.json(null);
+    let current = data;
+    if (current.status === 'face_match_passed' && current.cleanup_pending) {
+      try {
+        current = await clearMatchedIdentityImages(current);
+      } catch {
+        console.error('Identity verification image cleanup is pending.');
+      }
+    }
+    res.json(publicVerification(current));
+  } catch {
+    console.error('Identity verification status lookup failed.');
+    res.status(500).json({ error: 'Unable to load identity verification status.' });
+  }
+});
+
+app.get('/api/identity-verifications/:id', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityAdmin(res)) return;
+    let data = await findIdentityVerification(req.params.id, result.user.id);
+    if (!data) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (data.status === 'face_match_passed' && data.cleanup_pending) {
+      try {
+        data = await clearMatchedIdentityImages(data);
+      } catch {
+        console.error('Identity verification image cleanup is pending.');
+      }
+    }
+    res.json(publicVerification(data));
+  } catch {
+    console.error('Identity verification status lookup failed.');
+    res.status(500).json({ error: 'Unable to load identity verification status.' });
+  }
+});
+
+app.post('/api/identity-verifications/:id/document', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityProcessor(res)) return;
+    const verification = await findIdentityVerification(req.params.id, result.user.id);
+    if (!verification) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (!['awaiting_id', 'id_uploaded', 'id_scan_failed'].includes(verification.status)) {
+      return res.status(409).json({ error: 'An ID image cannot be replaced at this verification step.' });
+    }
+    const path = req.body?.path;
+    if (!isVerificationObjectPath(path, result.user.id, verification.id, 'id')) {
+      return res.status(400).json({ error: 'Invalid identity image path.' });
+    }
+    const { data: uploaded, error: uploadError } = await supabaseAdmin.storage.from(IDENTITY_BUCKET).download(path);
+    if (uploadError || !uploaded) return res.status(400).json({ error: 'Upload the ID image before continuing.' });
+    if (uploaded.size > MAX_IDENTITY_IMAGE_BYTES) return res.status(413).json({ error: 'ID image exceeds the 12 MB limit.' });
+
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .update({
+        id_object_path: path,
+        selfie_object_path: null,
+        status: 'id_uploaded',
+        extracted_fields: null,
+        reviewed_fields: null,
+        scan_issues: [],
+        match_issues: [],
+        cleanup_pending: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', verification.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    try {
+      await removeIdentityImages([verification.id_object_path, verification.selfie_object_path]);
+    } catch {
+      console.error('Previous identity verification image cleanup is pending.');
+    }
+    res.json(publicVerification(data));
+  } catch {
+    console.error('Identity document upload registration failed.');
+    res.status(500).json({ error: 'Unable to register the uploaded ID image.' });
+  }
+});
+
+app.post('/api/identity-verifications/:id/scan', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityProcessor(res)) return;
+    const verification = await findIdentityVerification(req.params.id, result.user.id);
+    if (!verification) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (!['id_uploaded', 'id_scan_failed'].includes(verification.status) || !verification.id_object_path) {
+      return res.status(409).json({ error: 'Upload an ID image before scanning it.' });
+    }
+
+    const blob = await downloadIdentityImage(verification.id_object_path);
+    const scan = await sendImageToProcessor('/scan-id?document_type=philippine_national_id', {
+      file: { blob, filename: 'national-id.jpg' },
+    });
+    const passed = scan.status === 'passed' && scan.fields;
+    const issues = Array.isArray(scan.issues) ? scan.issues.slice(0, 8) : [];
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .update({
+        status: passed ? 'id_scan_passed' : 'id_scan_failed',
+        extracted_fields: passed ? scan.fields : null,
+        scan_issues: issues,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', verification.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    res.json(publicVerification(data));
+  } catch (error) {
+    console.error('Identity document scan failed.');
+    const status = error.status >= 400 && error.status < 600 ? error.status : 500;
+    const detail = typeof error.message === 'string' ? error.message : '';
+    res.status(status).json({
+      error: status === 503
+        ? 'The document scanner is unavailable. Try again shortly.'
+        : detail
+          ? `Unable to scan the ID image: ${detail}`
+          : 'Unable to scan the ID image.',
+    });
+  }
+});
+
+app.post('/api/identity-verifications/:id/selfie', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityProcessor(res)) return;
+    const verification = await findIdentityVerification(req.params.id, result.user.id);
+    if (!verification) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (!['id_scan_passed', 'face_match_failed', 'face_uploaded'].includes(verification.status)) {
+      return res.status(409).json({ error: 'A face image can only be uploaded after a successful ID scan.' });
+    }
+    const path = req.body?.path;
+    if (!isVerificationObjectPath(path, result.user.id, verification.id, 'selfie')) {
+      return res.status(400).json({ error: 'Invalid face image path.' });
+    }
+    const { data: uploaded, error: uploadError } = await supabaseAdmin.storage.from(IDENTITY_BUCKET).download(path);
+    if (uploadError || !uploaded) return res.status(400).json({ error: 'Upload the face image before continuing.' });
+    if (uploaded.size > MAX_IDENTITY_IMAGE_BYTES) return res.status(413).json({ error: 'Face image exceeds the 12 MB limit.' });
+
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .update({
+        selfie_object_path: path,
+        status: 'face_uploaded',
+        match_issues: [],
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', verification.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    try {
+      await removeIdentityImages([verification.selfie_object_path]);
+    } catch {
+      console.error('Previous selfie cleanup is pending.');
+    }
+    res.json(publicVerification(data));
+  } catch {
+    console.error('Identity face image registration failed.');
+    res.status(500).json({ error: 'Unable to register the captured face image.' });
+  }
+});
+
+app.post('/api/identity-verifications/:id/match', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityProcessor(res)) return;
+    const verification = await findIdentityVerification(req.params.id, result.user.id);
+    if (!verification) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (verification.status !== 'face_uploaded' || !verification.id_object_path || !verification.selfie_object_path) {
+      return res.status(409).json({ error: 'Capture a face image after the ID scan passes.' });
+    }
+
+    const [idBlob, selfieBlob] = await Promise.all([
+      downloadIdentityImage(verification.id_object_path),
+      downloadIdentityImage(verification.selfie_object_path),
+    ]);
+    const match = await sendImageToProcessor('/match-face', {
+      id_document: { blob: idBlob, filename: 'national-id.jpg' },
+      selfie: { blob: selfieBlob, filename: 'selfie.jpg' },
+    });
+    const matched = match.status === 'passed' && match.match === true;
+    const issues = Array.isArray(match.issues) ? match.issues.slice(0, 8) : [];
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .update(matched
+        ? {
+          status: 'face_match_passed',
+          match_issues: [],
+          cleanup_pending: true,
+          updated_at: new Date().toISOString(),
+        }
+        : {
+          status: 'face_match_failed',
+          match_issues: issues.length ? issues : ['The face comparison did not pass. Try another clear, front-facing capture.'],
+          updated_at: new Date().toISOString(),
+        })
+      .eq('id', verification.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    if (matched) {
+      try {
+        const cleaned = await clearMatchedIdentityImages(data);
+        return res.json(publicVerification(cleaned));
+      } catch {
+        console.error('Matched identity verification image cleanup is pending.');
+        return res.json(publicVerification(data));
+      }
+    }
+
+    try {
+      await removeIdentityImages([verification.selfie_object_path]);
+      const { error: cleanupError } = await supabaseAdmin
+        .from('identity_verifications')
+        .update({ selfie_object_path: null, updated_at: new Date().toISOString() })
+        .eq('id', verification.id);
+      if (cleanupError) throw cleanupError;
+    } catch {
+      console.error('Failed face image cleanup is pending.');
+    }
+    res.json(publicVerification(data));
+  } catch (error) {
+    console.error('Identity face comparison failed.');
+    const status = error.status >= 400 && error.status < 600 ? error.status : 500;
+    const detail = typeof error.message === 'string' ? error.message : '';
+    res.status(status).json({
+      error: status === 503
+        ? 'The face comparison service is unavailable. Try again shortly.'
+        : detail
+          ? `Unable to compare the face images: ${detail}`
+          : 'Unable to compare the face images.',
+    });
+  }
+});
+
+app.post('/api/identity-verifications/:id/submit', async (req, res) => {
+  try {
+    const result = await requireUser(req, res, ['customer']);
+    if (!result) return;
+    if (!getIdentityAdmin(res)) return;
+    let verification = await findIdentityVerification(req.params.id, result.user.id);
+    if (!verification) return res.status(404).json({ error: 'Identity verification was not found.' });
+    if (verification.status === 'submitted') return res.json(publicVerification(verification));
+    if (!canSubmitVerification(verification.status)) {
+      return res.status(403).json({ error: 'The ID scan and face comparison must both pass before submission.' });
+    }
+    const reviewedFields = validateReviewedFields(req.body?.fields);
+    if (!reviewedFields) return res.status(400).json({ error: 'Review the required personal information and correct any invalid fields.' });
+    if (verification.cleanup_pending) {
+      try {
+        verification = await clearMatchedIdentityImages(verification);
+      } catch {
+        return res.status(503).json({ error: 'Image deletion is still pending. Try submitting again shortly.' });
+      }
+    }
+    const { data, error } = await supabaseAdmin
+      .from('identity_verifications')
+      .update({
+        status: 'submitted',
+        reviewed_fields: reviewedFields,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', verification.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    res.json(publicVerification(data));
+  } catch {
+    console.error('Identity verification submission failed.');
+    res.status(500).json({ error: 'Unable to submit the reviewed information.' });
+  }
+});
+
 async function readTable(tableName) {
   const { data, error } = await supabase.from(tableName).select('*');
 
@@ -100,9 +564,14 @@ async function logActivity(actorId, branchId, action, entityType, entityId, deta
 
 app.get('/api/message', async (req, res) => {
   try {
-    const data = await readTable('todos');
-
-    res.json({ message: `Database Connected! Found ${data.length} items.` });
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Database admin connection is not configured.' });
+    }
+    const { count, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true });
+    if (error) throw error;
+    res.json({ message: `Database Connected! Found ${count || 0} profiles.` });
   } catch (err) {
     console.error("Database connection failure:", err.message);
     res.status(500).json({ error: "Failed to connect to Supabase" });
@@ -118,9 +587,17 @@ app.post('/api/auth/register', async (req, res) => {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
-      options: { data: { full_name: fullName.trim(), role: 'customer', contact_number: contactNumber.trim() } },
+      options: {
+        data: { full_name: fullName.trim(), role: 'customer', contact_number: contactNumber.trim() },
+        emailRedirectTo: '360degrees://auth/callback',
+      },
     });
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      if (error.message?.toLowerCase().includes('email rate limit')) {
+        return res.status(429).json({ error: 'Email sending is temporarily unavailable. Please try again later.' });
+      }
+      return res.status(400).json({ error: error.message });
+    }
     res.status(201).json({ session: data.session, user: data.user });
   } catch (error) {
     console.error('Registration failure:', error.message);
@@ -163,7 +640,13 @@ app.post('/api/auth/guest', async (req, res) => {
       if (cleanupError) console.error('Guest account cleanup failure:', cleanupError.message);
     }
     console.error('Guest account creation failure:', error.message);
-    res.status(500).json({ error: 'Unable to start a guest account.' });
+    const detail = typeof error.message === 'string' ? error.message : '';
+    const status = detail.toLowerCase().includes('service-role') ? 503 : 500;
+    res.status(status).json({
+      error: detail
+        ? `Unable to start a guest account: ${detail}`
+        : 'Unable to start a guest account.',
+    });
   }
 });
 
@@ -830,7 +1313,13 @@ app.get('/api/notifications', async (req, res) => {
 
 try {
   requireConfiguration();
-  app.listen(PORT, () => console.log(`Server running smoothly on http://localhost:${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => console.log(`Server running smoothly on http://0.0.0.0:${PORT}`));
+  const identityCleanupTimer = setInterval(() => {
+    purgeExpiredIdentityVerifications().catch(() => {
+      console.error('Expired identity verification cleanup failed.');
+    });
+  }, 60 * 60 * 1000);
+  identityCleanupTimer.unref();
 } catch (error) {
   console.error(`Server configuration error: ${error.message}`);
   process.exitCode = 1;

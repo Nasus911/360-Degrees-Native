@@ -3,6 +3,9 @@
     "name": "client",
     "slug": "client",
     "version": "1.0.0",
+    "scheme": [
+      "degrees360"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -10,13 +13,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow 360 Degrees to scan customer loyalty QR codes.",
+          "cameraPermission": "Allow 360 Degrees to scan reward codes and capture a face for identity verification.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
       ],
       "expo-image-picker",
-      "expo-status-bar"
+      "expo-status-bar",
+      "@rbayuokt/expo-face-vision"
     ],
     "ios": {
       "supportsTablet": true
@@ -27,10 +31,21 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.naxus911.client"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "80c64847-0d42-4b50-b8ed-b3db76630110"
+      }
+    },
+    "owner": "naxus911"
   }
 }
