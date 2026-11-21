@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { styles } from './styles';
 import {
   Alert,
   Animated,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,6 +22,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
 import QRCode from 'react-native-qrcode-svg';
+import { Ionicons } from '@expo/vector-icons';
+import { useFonts, PinyonScript_400Regular } from '@expo-google-fonts/pinyon-script';
 
 const products = [
   { id: 1, name: 'Iced Spanish Latte', category: 'Coffee', price: 185, stock: 38, emoji: '🥤', description: 'Local espresso, condensed milk, silky and balanced.' },
@@ -52,6 +56,13 @@ const demoAccounts = [
 ];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
+const navIcons = {
+  overview: 'grid-outline', branches: 'storefront-outline', inventory: 'cube-outline', products: 'cafe-outline',
+  promotions: 'pricetag-outline', loyalty: 'gift-outline', team: 'people-outline', audit: 'list-outline',
+  pos: 'calculator-outline', queue: 'time-outline', receipts: 'receipt-outline',
+  home: 'home-outline', menu: 'cafe-outline', orders: 'bag-handle-outline', wallet: 'wallet-outline',
+  account: 'person-circle-outline', branch: 'location-outline',
+};
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 const orderStatusLabels = {
   new: 'New',
@@ -144,6 +155,7 @@ function AppContent() {
   const [checkoutError, setCheckoutError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
+  const [fontsLoaded] = useFonts({ PinyonScript_400Regular });
   const isMobile = width < 700;
   const drawerWidth = Math.min(width * 0.82, 320);
   const drawerPosition = useRef(new Animated.Value(-drawerWidth)).current;
@@ -796,14 +808,15 @@ function AppContent() {
           <Pressable style={styles.drawerBackdropPressable} onPress={() => setMenuOpen(false)} accessibilityLabel="Close navigation menu" />
         </Animated.View>}
         <Animated.View style={[styles.sidebar, isMobile && styles.sidebarMobile, isMobile && { width: drawerWidth, transform: [{ translateX: drawerPosition }] }]}>
-          <View style={styles.brand}><Text style={styles.brandMark}>360</Text><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>LIPA BRANCH</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
+          <View style={styles.brand}><BrandLogo size={72} /><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>LIPA BRANCH</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
           <Text style={styles.label}>{role === 'customer' ? 'Your coffee shop' : `${config.label} workspace`}</Text>
-          <View style={styles.nav}>{config.pages.map(([id, label, icon]) => <Pressable key={id} onPress={() => navigate(id)} style={[styles.navButton, page === id && styles.navButtonActive]}><Text style={styles.navIcon}>{icon}</Text><Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text></Pressable>)}</View>
+          <View style={styles.nav}>{config.pages.map(([id, label, icon]) => <Pressable key={id} onPress={() => navigate(id)} style={[styles.navButton, page === id && styles.navButtonActive]}><Ionicons name={navIcons[id] || 'ellipse-outline'} size={20} color={page === id ? '#ffffff' : '#d8ccc3'} style={{ width: 22, textAlign: 'center' }} /><Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text></Pressable>)}</View>
           <View style={styles.sidebarFooter}><Text style={styles.store}>Lipa Branch · Lipa City</Text><Text style={styles.sidebarMuted}>Open today until 10:00 PM</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
         </Animated.View>
         <View style={styles.main}>
-          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><Text style={styles.mobileBrandMark}>360</Text><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
-          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
+          <PageBackground variant={(role === 'customer' || role === 'guest') ? 'shop' : 'dashboard'}>
+          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Ionicons name="menu" size={26} color="#ffffff" /></Pressable><View style={styles.mobileBrand}><BrandLogo size={56} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
+          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><Text style={{ flex: isMobile ? undefined : 1, width: isMobile ? '100%' : undefined, textAlign: isMobile ? 'left' : 'center', fontFamily: fontsLoaded ? 'PinyonScript_400Regular' : 'Georgia', fontStyle: fontsLoaded ? 'normal' : 'italic', fontSize: isMobile ? 22 : 32, color: (role === 'customer' || role === 'guest') ? '#ffffff' : '#2a1c16', textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: (role === 'customer' || role === 'guest') ? 8 : 0 }}>“A full circle of flavor & comfort”</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text><Ionicons name="location-outline" size={14} color="#5e5149" />{'  '}{activeBranchId ? (branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch') : isHeadAdmin ? 'All branches' : 'Assigned branch'}</Text></Pressable></View></View>
           <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
             {page === 'overview' && <AdminOverview summary={reportSummary} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
@@ -828,7 +841,10 @@ function AppContent() {
           </ScrollView>
           {(role === 'customer' || role === 'guest') && <>
             <Pressable accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.reduce((sum, item) => sum + item.quantity, 0)} items`} style={styles.cartFloatingButton} onPress={() => setCartOpen(true)}>
-              <Text style={styles.cartFloatingText}>Cart · {cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="cart-outline" size={24} color="#fff" />
+                <Text style={styles.cartFloatingText}>{cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
+              </View>
             </Pressable>
             <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
               <View style={styles.cartModalBackdrop}>
@@ -842,7 +858,8 @@ function AppContent() {
                 </View>
               </View>
             </Modal>
-          </>}
+           </>}
+           </PageBackground>
         </View>
       </View>
     </SafeAreaView>
@@ -890,15 +907,18 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       .catch((guestError) => setError(guestError.message || 'Unable to start a guest account.'))
       .finally(() => setGuestSubmitting(false));
   };
-  return <SafeAreaView style={styles.authSafeArea}>
+    return <SafeAreaView style={styles.authSafeArea}>
+    <ImageBackground source={require('./assets/cafe-bg.jpg')} style={{ flex: 1, width: '100%', height: '100%' }} imageStyle={{ width: '100%', height: '100%', resizeMode: 'cover' }}>
+    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(24, 14, 10, 0.62)' }} />
     <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView contentContainerStyle={[styles.authPage, width < 480 && styles.authPageCompact]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <View style={[styles.authCard, width < 480 && styles.authCardCompact]}>
         <View style={styles.authBrand}>
-          <Text style={styles.brandMark}>360</Text>
-          <View>
-            <Text style={styles.brandNameDark}>360 Degrees Specialty Cafe</Text>
-            <Text style={styles.branchDark}>LIPA BRANCH</Text>
+          <BrandLogo size={84} />
+          <View style={styles.flex}>
+            <Text style={styles.brandNameDark}>360 Degrees</Text>
+            <Text style={styles.brandTagline}>SPECIALTY CAFE</Text>
+            <View style={styles.branchChip}><Text style={styles.branchChipText}>LIPA BRANCH</Text></View>
           </View>
         </View>
         {mode !== 'guest' && <View style={styles.authTabs}>
@@ -932,9 +952,25 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
         </Pressable>}
         {mode === 'login' && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
       </View>
+      
     </ScrollView>
-    </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+    </ImageBackground>
   </SafeAreaView>;
+}
+
+function PageBackground({ variant = 'shop', children }) {
+  const isShop = variant === 'shop';
+  return <ImageBackground source={isShop ? require('./assets/cafe-bg.jpg') : require('./assets/dashboard-bg.jpg')} style={{ flex: 1, width: '100%', height: '100%' }} imageStyle={{ width: '100%', height: '100%' }} resizeMode="cover">
+    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: isShop ? 'rgba(248, 243, 236, 0.42)' : 'rgba(248, 243, 236, 0.1)' }} />
+    {children}
+  </ImageBackground>;
+}
+
+function BrandLogo({ size = 44 }) {
+  return <View style={{ width: size, height: size, borderRadius: size * 0.26, backgroundColor: '#2a1c16', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <Image source={require('./assets/logo.png')} style={{ width: size * 0.92, height: size * 0.92 }} resizeMode="contain" accessibilityLabel="360 Degrees Cafe logo" />
+  </View>;
 }
 
 function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
@@ -1918,9 +1954,10 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
     && (!promotion.branchIds?.length || promotion.branchIds.includes(branchId))
     && (!promotion.starts_at || new Date(promotion.starts_at).getTime() <= currentTime)
     && (!promotion.ends_at || new Date(promotion.ends_at).getTime() > currentTime));
-  const promotedProduct = activePromotion && products.find((product) => product.id === activePromotion.productId);
-  const customerProducts = products.filter((product) => product.category !== 'Inventory');
-  const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Lipa Branch';
+    const promotedProduct = activePromotion && products.find((product) => product.id === activePromotion.productId);
+    const customerProducts = products.filter((product) => product.category !== 'Inventory');
+    const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Lipa Branch';
+    const [promoClosed, setPromoClosed] = useState(false);
   return <>
     <Header eyebrow={`360 Degrees Specialty Cafe · ${branchName}`} title={`Good morning, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
@@ -1929,7 +1966,8 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
     {(readyOrder || readyNotification) && <View style={styles.notification}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text>{readyNotification && <Pressable onPress={() => onDismissNotification(readyNotification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable>}</View><Text style={styles.subtitle}>{readyNotification?.message || `Order #${readyOrder.id} is ready at ${branchName}.`}</Text></View>}
     {activeOrder && <View style={styles.card}><Text style={styles.cardTitle}>Order tracking · #{activeOrder.id}</Text><Text style={styles.pill}>{activeOrder.status}</Text>{pickupLabel(activeOrder) ? <Text style={styles.successText}>{pickupLabel(activeOrder)}</Text> : null}<Text style={styles.subtitle}>{activeOrder.items}</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('orders')}><Text>View order details</Text></Pressable></View>}
     {notifications.filter((notification) => !notification.title?.toLowerCase().includes('ready')).slice(0, 3).map((notification) => <View style={styles.notification} key={notification.id}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View><Text style={styles.subtitle}>{notification.message}</Text></View>)}
-    {activePromotion ? <View style={styles.promo}>
+        {!promoClosed && (activePromotion ? <View style={styles.promo}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close promotion" onPress={() => setPromoClosed(true)} style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.16)', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}><Ionicons name="close" size={20} color="#ffffff" /></Pressable>
       <Text style={styles.eyebrow}>Featured promotion</Text>
       <Text style={styles.promoTitle}>{activePromotion.title}</Text>
       <Text style={styles.subtitle}>{activePromotion.description}</Text>
@@ -1937,14 +1975,15 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
       <Pressable style={styles.button} onPress={() => promotedProduct ? onAdd(promotedProduct) : onNavigate('menu')}>
         <Text style={styles.buttonText}>{promotedProduct ? `Order ${promotedProduct.name}` : 'See menu'}</Text>
       </Pressable>
-    </View> : <View style={styles.promo}>
+        </View> : <View style={styles.promo}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close promotion" onPress={() => setPromoClosed(true)} style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255, 255, 255, 0.16)', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}><Ionicons name="close" size={20} color="#ffffff" /></Pressable>
       <Text style={styles.eyebrow}>October special · from {money(215)}</Text>
       <Text style={styles.promoTitle}>Ube cloud, made for slow afternoons.</Text>
       <Text style={styles.subtitle}>Velvety ube, local espresso, and a sea-salt cream cap.</Text>
       <Pressable style={styles.button} onPress={() => onAdd(products.find((product) => product.name === 'Ube Cloud Latte') || customerProducts[0])}>
         <Text style={styles.buttonText}>Order Ube Cloud Latte</Text>
       </Pressable>
-    </View>}
+    </View>)}
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Picked for you</Text>
       {customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>)}
@@ -2094,187 +2133,4 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
   </>;
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
-  authSafeArea: { flex: 1, backgroundColor: '#33241e' },
-  authKeyboardAvoiding: { flex: 1 },
-  authPage: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  authPageCompact: { padding: 14 },
-  authCard: { width: '100%', maxWidth: 460, backgroundColor: '#fffefa', borderRadius: 18, padding: 28 },
-  authCardCompact: { padding: 20, borderRadius: 16 },
-  authBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 24 },
-  authTabs: { flexDirection: 'row', backgroundColor: '#f3eee8', borderRadius: 9, padding: 4, marginBottom: 20 },
-  authTab: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 7 },
-  authTabActive: { backgroundColor: '#d9683c' },
-  authTabText: { color: '#82766e', fontSize: 13, fontWeight: '700' },
-  authTabTextActive: { color: '#fff' },
-  brandNameDark: { color: '#30251f', fontFamily: 'Georgia', fontSize: 16, maxWidth: 180 },
-  branchDark: { color: '#82766e', fontSize: 9, letterSpacing: 2, marginTop: 4 },
-  authTitle: { color: '#30251f', fontFamily: 'Georgia', fontSize: 30, marginTop: 7, marginBottom: 8 },
-  authTitleCompact: { fontSize: 26 },
-  authSubtitle: { color: '#82766e', fontSize: 13, lineHeight: 20, marginBottom: 20 },
-  authSubtitleCompact: { marginBottom: 14 },
-  authInput: { minHeight: 48, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, marginBottom: 12, fontSize: 14 },
-  loyaltyInputWrapper: { position: 'relative', marginBottom: 12 },
-  loyaltyRuleInput: { minHeight: 62, marginBottom: 0, paddingTop: 8, paddingBottom: 23, textAlignVertical: 'top' },
-  loyaltyInputDescription: { position: 'absolute', left: 14, right: 14, bottom: 7, color: '#82766e', fontSize: 11 },
-  readOnlyInput: { color: '#82766e', backgroundColor: '#f3eee8' },
-  fieldLabel: { color: '#5e5149', fontSize: 12, fontWeight: '700', marginBottom: 7 },
-  roleDropdown: { marginBottom: 12 },
-  roleDropdownTrigger: { minHeight: 48, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  roleDropdownValue: { color: '#30251f', fontSize: 14 },
-  roleDropdownChevron: { color: '#82766e', fontSize: 11 },
-  roleDropdownMenu: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, marginTop: 5, overflow: 'hidden' },
-  roleDropdownOption: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14 },
-  roleDropdownOptionSelected: { backgroundColor: '#f5ece6' },
-  roleDropdownOptionText: { color: '#30251f', fontSize: 14 },
-  roleDropdownOptionTextSelected: { color: '#b94f2b', fontWeight: '700' },
-  fieldRow: { flexDirection: 'row', gap: 10 },
-  fieldHalf: { flex: 1 },
-  passwordInputWrapper: { minHeight: 48, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, marginBottom: 12 },
-  passwordInput: { flex: 1, minHeight: 46, paddingHorizontal: 14, fontSize: 14 },
-  passwordToggle: { paddingHorizontal: 14, paddingVertical: 13 },
-  passwordToggleText: { color: '#b94f2b', fontSize: 12, fontWeight: '700' },
-  authButton: { backgroundColor: '#d9683c', padding: 14, borderRadius: 9, alignItems: 'center', marginTop: 6 },
-  guestButton: { borderWidth: 1, borderColor: '#e9e0d7', padding: 12, borderRadius: 9, alignItems: 'center', marginTop: 12 },
-  guestButtonText: { color: '#5f4031', fontSize: 13, fontWeight: '700' },
-  guestHint: { color: '#82766e', fontSize: 10, marginTop: 5 },
-  authSwitch: { alignItems: 'center', padding: 14 },
-  authSwitchText: { color: '#b94f2b', fontSize: 13, fontWeight: '700' },
-  formError: { color: '#b33c2f', fontSize: 12, marginBottom: 8 },
-  successText: { color: '#596849', fontSize: 12, marginTop: 8 },
-  auditDetails: { color: '#82766e', fontSize: 10, marginTop: 4 },
-  branchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
-  branchRowActive: { backgroundColor: '#f5ece6' },
-  demoHint: { color: '#82766e', fontSize: 11, textAlign: 'center', marginTop: 10 },
-  app: { flex: 1, flexDirection: 'row', position: 'relative' },
-  appMobile: { flexDirection: 'column' },
-  sidebar: { width: 246, backgroundColor: '#33241e', padding: 20, minHeight: '100%' },
-  drawerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 8, backgroundColor: 'rgba(20, 13, 10, 0.58)' },
-  drawerBackdropPressable: { flex: 1 },
-  sidebarMobile: { position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 10, minHeight: 0, padding: 18, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 8, height: 0 }, elevation: 14 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 26 },
-  brandDetails: { flex: 1 },
-  brandMark: { backgroundColor: '#d9683c', color: '#fff', borderRadius: 12, padding: 9, fontSize: 18, fontWeight: '700' },
-  brandName: { color: '#fff', fontFamily: 'Georgia', fontSize: 16, maxWidth: 155 },
-  branch: { color: '#b9a99f', fontSize: 9, letterSpacing: 2, marginTop: 4 },
-  label: { color: '#9f8c80', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 9, marginTop: 8 },
-  nav: { gap: 4 },
-  navButton: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11, borderRadius: 9 },
-  navButtonActive: { backgroundColor: '#d9683c' },
-  navIcon: { color: '#fff', width: 18, textAlign: 'center' },
-  navText: { color: '#d8ccc3', fontSize: 13 },
-  navTextActive: { color: '#fff', fontWeight: '700' },
-  sidebarFooter: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: '#504038', paddingTop: 16 },
-  store: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  sidebarMuted: { color: '#b9a99f', fontSize: 10, marginTop: 4 },
-  person: { color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 17 },
-  signOut: { marginTop: 16, alignSelf: 'flex-start', paddingVertical: 6 },
-  signOutText: { color: '#e8c4a7', fontSize: 11, fontWeight: '700' },
-  main: { flex: 1, minWidth: 0 },
-  topbar: { minHeight: 70, padding: 16, borderBottomWidth: 1, borderBottomColor: '#e9e0d7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  topbarMobile: { alignItems: 'flex-start', flexWrap: 'wrap' },
-  topbarActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  mobileHeader: { minHeight: 64, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#33241e', flexDirection: 'row', alignItems: 'center', gap: 12 },
-  menuButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#402e26' },
-  menuIcon: { color: '#fff', fontSize: 23, lineHeight: 25 },
-  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  mobileBrandMark: { backgroundColor: '#d9683c', color: '#fff', borderRadius: 9, paddingVertical: 7, paddingHorizontal: 8, fontSize: 14, fontWeight: '700' },
-  mobileBrandName: { color: '#fff', fontFamily: 'Georgia', fontSize: 14 },
-  mobileBranch: { color: '#b9a99f', fontSize: 8, letterSpacing: 1.5, marginTop: 2 },
-  closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#402e26' },
-  closeIcon: { color: '#fff', fontSize: 25, lineHeight: 27 },
-  breadcrumb: { color: '#82766e', fontSize: 12, flexShrink: 1 },
-  location: { color: '#5e5149', fontSize: 11, borderWidth: 1, borderColor: '#e9e0d7', padding: 9, borderRadius: 8 },
-  topbarSignOut: { color: '#b94f2b', fontSize: 11, fontWeight: '700' },
-  content: { padding: 28, maxWidth: 1440, width: '100%' },
-  contentMobile: { padding: 16 },
-  contentWithCart: { paddingBottom: 100 },
-  heading: { marginBottom: 22 },
-  eyebrow: { color: '#b94f2b', fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
-  title: { color: '#30251f', fontFamily: 'Georgia', fontSize: 34, marginTop: 7, marginBottom: 6 },
-  subtitle: { color: '#82766e', fontSize: 12, lineHeight: 19 },
-  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 },
-  stat: { flexGrow: 1, flexBasis: 170, minHeight: 110, padding: 17, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 14 },
-  statLabel: { color: '#82766e', fontSize: 11 },
-  statValue: { color: '#30251f', fontSize: 24, fontWeight: '700', marginTop: 13 },
-  statNote: { color: '#71815f', fontSize: 10, marginTop: 5 },
-  card: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 14, padding: 20, marginBottom: 16 },
-  cardTitle: { color: '#30251f', fontSize: 14, fontWeight: '700', marginBottom: 7 },
-  forecastTitle: { color: '#fff', backgroundColor: '#33241e', padding: 16, fontFamily: 'Georgia', fontSize: 20, marginVertical: 12, borderRadius: 10 },
-  listCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 15, marginBottom: 10 },
-  queueCustomerGroup: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, marginBottom: 10, overflow: 'hidden' },
-  queueCustomerHeader: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15 },
-  queueCustomerOrders: { paddingHorizontal: 14, paddingBottom: 8, borderTopWidth: 1, borderTopColor: '#f0ebe5' },
-  queueOrder: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#f0ebe5' },
-  listRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', color: '#30251f', fontSize: 12 },
-  warning: { color: '#a65c2f', fontWeight: '700' },
-  flex: { flex: 1 },
-  button: { backgroundColor: '#d9683c', paddingVertical: 10, paddingHorizontal: 13, borderRadius: 8, alignSelf: 'flex-start', marginTop: 12 },
-  buttonDark: { backgroundColor: '#33241e', padding: 13, borderRadius: 8, alignItems: 'center', marginTop: 14 },
-  buttonSecondary: { borderWidth: 1, borderColor: '#e9e0d7', padding: 10, borderRadius: 8, alignItems: 'center', marginTop: 14 },
-  deleteButton: { borderWidth: 1, borderColor: '#d9a99a', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 7 },
-  deleteButtonText: { color: '#a33f2d', fontSize: 11, fontWeight: '700' },
-  deleteConfirmation: { borderWidth: 1, borderColor: '#d9a99a', borderRadius: 8, padding: 14, marginBottom: 14, backgroundColor: '#fff' },
-  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
-  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  optionChoice: { borderWidth: 1, borderColor: '#e9e0d7', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#fff' },
-  optionChoiceSelected: { backgroundColor: '#f5ece6', borderColor: '#d9683c' },
-  optionChoiceText: { color: '#5e5149', fontSize: 11 },
-  optionChoiceTextSelected: { color: '#b94f2b', fontWeight: '700' },
-  confirmCancelButton: { borderWidth: 1, borderColor: '#e9e0d7', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 7 },
-  confirmCancelText: { color: '#5e5149', fontSize: 11, fontWeight: '700' },
-  confirmDeleteButton: { backgroundColor: '#a33f2d', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 7 },
-  confirmDeleteText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  buttonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  disabled: { opacity: 0.45 },
-  input: { minHeight: 40, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 8, paddingHorizontal: 12, marginBottom: 16, fontSize: 12 },
-  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
-  productCard: { flexGrow: 1, flexBasis: 220, maxWidth: 330, backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 13, padding: 16, marginBottom: 2 },
-  productImage: { width: '100%', height: 150, borderRadius: 8, marginBottom: 12, backgroundColor: '#f3eee8' },
-  productEmoji: { fontSize: 30, marginBottom: 12 },
-  photoPicker: { minHeight: 150, backgroundColor: '#fff', borderWidth: 1, borderStyle: 'dashed', borderColor: '#cfc2b8', borderRadius: 9, marginBottom: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  photoPreview: { width: '100%', height: 150 },
-  photoPickerText: { color: '#b94f2b', fontSize: 13, fontWeight: '700' },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 },
-  cartRow: { gap: 8, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
-  cartLineFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 40 },
-  cartSubtotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  accountRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
-  quantity: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  quantityButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3eee8', borderRadius: 20 },
-  queueActions: { alignItems: 'flex-end', gap: 8 },
-  smallButton: { backgroundColor: '#d9683c', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 7 },
-  notification: { backgroundColor: '#e7eddf', borderWidth: 1, borderColor: '#bdcdb0', borderRadius: 12, padding: 16, marginBottom: 16 },
-  notificationHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
-  dismissText: { color: '#596849', fontSize: 11, fontWeight: '700' },
-  pickupSchedule: { backgroundColor: '#fbf8f3', borderRadius: 9, padding: 12, marginTop: 12 },
-  redemptionCode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 10, marginTop: 8, backgroundColor: '#fff', borderRadius: 8 },
-  customerIdCard: { backgroundColor: '#fffefa', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 16 },
-  customerId: { color: '#30251f', fontSize: 16, fontWeight: '700', marginVertical: 5 },
-  cartFloatingButton: { position: 'absolute', right: 20, bottom: 18, zIndex: 5, minHeight: 52, minWidth: 126, backgroundColor: '#33241e', borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  cartFloatingText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  cartModalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12, backgroundColor: 'rgba(20, 13, 10, 0.62)' },
-  cartModalSheet: { width: '100%', maxWidth: 560, maxHeight: '92%', backgroundColor: '#fbf8f3', borderRadius: 18, padding: 14 },
-  cartModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 },
-  closeButtonLight: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: '#f0e9e1' },
-  closeIconLight: { color: '#5e5149', fontSize: 26, lineHeight: 28 },
-  customerIdRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  customerIdInput: { flex: 1, marginBottom: 0 },
-  scannerBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(20, 13, 10, 0.65)' },
-  scannerSheet: { backgroundColor: '#fffefa', borderRadius: 12, padding: 16 },
-  customizeSheet: { backgroundColor: '#fffefa', borderRadius: 12, padding: 18, maxHeight: '90%' },
-  scanCamera: { width: '100%', height: 320, borderRadius: 8, overflow: 'hidden' },
-  notificationTitle: { color: '#596849', fontSize: 15, fontWeight: '700', marginBottom: 5 },
-  price: { color: '#5f4031', fontWeight: '700', fontSize: 14 },
-  total: { color: '#30251f', fontWeight: '700', fontSize: 18, textAlign: 'right', marginTop: 16 },
-  pill: { backgroundColor: '#e7eddf', color: '#596849', paddingVertical: 6, paddingHorizontal: 9, borderRadius: 20, fontSize: 10, fontWeight: '700' },
-  promo: { backgroundColor: '#33241e', borderRadius: 14, padding: 22, marginBottom: 18 },
-  promoTitle: { color: '#fff', fontFamily: 'Georgia', fontSize: 25, marginTop: 10, marginBottom: 8 },
-  promoPrice: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 10 },
-  reward: { backgroundColor: '#5f4031', borderRadius: 14, padding: 24 },
-  rewardPoints: { color: '#fff', fontSize: 32, fontWeight: '700', marginVertical: 12 },
-  progress: { height: 8, backgroundColor: '#866753', borderRadius: 8, marginTop: 15 },
-  progressFill: { height: 8, width: '78%', backgroundColor: '#e8c4a7', borderRadius: 8 },
-  chart: { color: '#d9683c', fontSize: 28, letterSpacing: 4, marginTop: 22, paddingVertical: 20 },
-});
+
