@@ -988,7 +988,7 @@ function AppContent() {
 }
 
 function BrandLogo({ size = 48 }) {
-  return <Image source={require('./assets/user-brand-logo.png')} resizeMode="contain" style={[styles.brandLogoImage, { width: size, height: size }]} accessible accessibilityRole="image" accessibilityLabel="360 Degrees Cafe logo" />;
+  return <Image source={require('./assets/brand-logo.png')} resizeMode="contain" style={[styles.brandLogoImage, { width: size, height: size }]} accessible accessibilityRole="image" accessibilityLabel="360 Degrees Cafe logo" />;
 }
 
 function PageBackground({ variant, children }) {
