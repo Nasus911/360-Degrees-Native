@@ -53,6 +53,10 @@ const demoAccounts = [
 ];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
+const createIdempotencyKey = () => {
+  const random = Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+  return `CHK-${Date.now().toString(36)}-${random}`.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 128);
+};
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 const orderStatusLabels = {
   new: 'New',
@@ -107,7 +111,7 @@ async function requestApi(path, options = {}) {
   if (!session?.access_token) throw new Error('Your session has expired. Sign in again.');
   const response = await fetch(`${apiUrl.replace(/\/+$/, '')}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...options.headers },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}), ...options.headers },
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
@@ -143,6 +147,8 @@ function AppContent() {
   const [notifications, setNotifications] = useState([]);
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const checkoutInProgressRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
@@ -450,6 +456,15 @@ function AppContent() {
     const customizationKey = JSON.stringify(customization);
     const id = `${product.id}:${customizationKey}`;
     const existing = current.find((line) => line.id === id);
+    if (existing && existing.quantity >= Number(product.stock || 0)) {
+      setCheckoutError(`Only ${product.stock} units of ${product.name} are available.`);
+      return current;
+    }
+    if (!existing && Number(product.stock || 0) < 1) {
+      setCheckoutError(`${product.name} is out of stock.`);
+      return current;
+    }
+    setCheckoutError('');
     const item = {
       ...product,
       id,
@@ -640,7 +655,9 @@ function AppContent() {
   };
   const redeemReward = async (rewardId) => requestApi('/api/loyalty/redeem', { method: 'POST', body: JSON.stringify({ rewardId }) });
   const placePosOrder = async (customerCode) => {
-    if (!cart.length) return;
+    if (!cart.length || checkoutInProgressRef.current) return;
+    checkoutInProgressRef.current = true;
+    setCheckoutSubmitting(true);
     setCheckoutNotice('');
     setCheckoutError('');
     if (supabase) {
@@ -648,11 +665,15 @@ function AppContent() {
       try {
         result = await requestApi('/api/pos/checkout', {
           method: 'POST',
+          idempotencyKey: createIdempotencyKey(),
           body: JSON.stringify({ branchId: activeBranchId || user.branchId, customerCode, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
         });
       } catch (error) {
         setCheckoutError(error.message || 'Unable to complete checkout.');
         return;
+      } finally {
+        checkoutInProgressRef.current = false;
+        setCheckoutSubmitting(false);
       }
       setOrders((current) => [toClientOrder({
         ...result.order,
@@ -677,19 +698,26 @@ function AppContent() {
       created_at: new Date().toISOString(),
       estimated_pickup_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     }, ...current]);
-    setCheckoutNotice(`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`);
+    setCheckoutNotice={`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`;
     setCart([]);
   };
   const placeOrder = async (pickupAt = null) => {
-    if (!cart.length) return;
+    if (!cart.length || checkoutInProgressRef.current) return;
+    checkoutInProgressRef.current = true;
+    setCheckoutSubmitting(true);
     setCheckoutNotice('');
     setCheckoutError('');
     if (supabase) {
       const branchId = activeBranchId || user.branchId || branches[0]?.id;
-      if (!branchId) return setCheckoutNotice('Choose an active branch before placing your order.');
+      if (!branchId) {
+        checkoutInProgressRef.current = false;
+        setCheckoutSubmitting(false);
+        return setCheckoutNotice('Choose an active branch before placing your order.');
+      }
       try {
         const result = await requestApi('/api/pos/checkout', {
           method: 'POST',
+          idempotencyKey: createIdempotencyKey(),
           body: JSON.stringify({ branchId, pickupAt, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
         });
         setOrders((current) => [toClientOrder({
@@ -700,28 +728,30 @@ function AppContent() {
         setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : 'Order placed.'}`);
         setCart([]);
         setCartOpen(false);
-      } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
+      } catch (orderError) {
+        setCheckoutError(orderError.message || 'Unable to place order.');
+      } finally {
+        checkoutInProgressRef.current = false;
+        setCheckoutSubmitting(false);
+      }
       return;
     }
+    const preview = previewPromotion(cart, promotions, activeBranchId);
+    const orderId = `SC-DEMO-${Date.now()}`;
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const order = {
-      id: `SC-DEMO-${Date.now()}`,
-      customer: user.name,
-      customerId: user.id,
-      customerEmail: user.email,
+    setOrders((current) => [{
+      id: orderId,
+      customer: customerCode || 'Walk-in',
       branch_id: activeBranchId || user.branchId || branches[0]?.id || '',
-      items: cart.map((item) => `${item.name} × ${item.quantity}`).join(', '),
-      total: subtotal,
+      items: preview.items.map((item) => `${item.name} × ${item.quantity}`).join(', '),
+      total: Math.max(0, subtotal - preview.discountTotal),
       status: 'New',
-      channel: 'Online',
+      channel: 'Counter',
       created_at: new Date().toISOString(),
-      scheduled_pickup_at: pickupAt,
-      estimated_pickup_at: pickupAt || new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-    };
-    setOrders((current) => [order, ...current]);
+      estimated_pickup_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    }, ...current]);
+    setCheckoutNotice={`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`;
     setCart([]);
-    setCartOpen(false);
-    Alert.alert('Order placed', 'Your pickup order is being prepared.');
   };
   const updateOrderStatus = async (orderId, status) => {
     const order = orders.find((current) => current.id === orderId);
@@ -817,7 +847,7 @@ function AppContent() {
               const updated = supabase ? await requestApi(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !account.isActive }) }) : { ...account, isActive: !account.isActive };
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
-            {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
+            {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} checkoutSubmitting={checkoutSubmitting} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: delta > 0 ? Math.min(Number(item.stock || 0), item.quantity + delta) : Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
             {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} />}
             {page === 'receipts' && <Receipts orders={orders} />}
             {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} onDismissNotification={dismissNotification} onNavigate={navigate} onAdd={addToCart} />}
@@ -836,7 +866,7 @@ function AppContent() {
                 <View style={styles.cartModalSheet}>
                   <View style={styles.cartModalHeader}><Text style={styles.title}>Your cart</Text><Pressable accessibilityRole="button" accessibilityLabel="Close cart" style={styles.closeButtonLight} onPress={() => setCartOpen(false)}><Text style={styles.closeIconLight}>×</Text></Pressable></View>
                   <ScrollView keyboardShouldPersistTaps="handled">
-                    <CartPanel cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} schedulePickup />
+                    <CartPanel cart={cart} discountTotal={0} checkoutSubmitting={checkoutSubmitting} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: delta > 0 ? Math.min(Number(item.stock || 0), item.quantity + delta) : Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} schedulePickup />
                     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
                     {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
                   </ScrollView>
@@ -1085,6 +1115,10 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
         {onToggleAccount && !['admin', 'head_admin', 'customer'].includes(account.role) && <Pressable style={styles.deleteButton} onPress={() => onToggleAccount(account)}><Text style={styles.deleteButtonText}>{account.isActive === false || account.is_active === false ? 'Activate' : 'Deactivate'}</Text></Pressable>}
       </View>)}
     </View>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Delete account</Text>
+      <Text style={styles.subtitle}>To delete an account, set it to inactive instead.</Text>
+    </View>
   </>;
 }
 
@@ -1099,7 +1133,7 @@ function AdminOverview({ summary, onNavigate, branches, selectedBranchId, onSele
     <Header eyebrow="Operations" title="Overview" subtitle="Live operating metrics and sales reports for your selected branch scope." />
     <View style={styles.stats}><Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} /><Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" /><Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} /><Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`Inventory value ${money(summary?.inventoryValue || 0)}`} /></View>
     <View style={styles.card}><Text style={styles.cardTitle}>Workspace shortcuts</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('branches')}><Text>Manage branches</Text></Pressable><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('team')}><Text>Manage employee accounts</Text></Pressable></View>
-    <Reports summary={summary} branches={branches} selectedBranchId={selectedBranchId} onSelectBranch={onSelectBranch} isHeadAdmin={isHeadAdmin} />
+    <Reports summary={summary} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />
   </>;
 }
 function Branches({ branches, selectedBranchId, onSelectBranch, onCreateBranch, onToggleBranch }) {
@@ -1369,7 +1403,7 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
       </View>)}
     </View>}
     <View style={styles.stats}><Stat label="Tracked items" value={String(items.length)} note="At selected branches" /><Stat label="Low stock" value={String(items.filter((item) => item.quantity <= item.low_stock_threshold).length)} note="At or below threshold" /><Stat label="Stock value" value={money(items.reduce((sum, item) => sum + Number(item.unit_cost || 0) * item.quantity, 0))} note="Based on recorded cost" /></View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Stock by branch</Text>{loading ? <Text style={styles.subtitle}>Loading inventory...</Text> : items.map((item) => <View style={styles.accountRow} key={item.id}><View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.sku} · {item.branches?.name || branches.find((branch) => branch.id === item.branch_id)?.name || 'Branch stock'}</Text></View><Text style={item.quantity <= item.low_stock_threshold ? styles.warning : styles.price}>{item.quantity} units</Text><View style={styles.quantity}><Pressable onPress={() => adjustStock(item, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Pressable onPress={() => adjustStock(item, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View></View>)}</View>
+    <View style={styles.card}><Text style={styles.cardTitle}>Stock by branch</Text>{loading ? <Text style={styles.subtitle}>Loading inventory...</Text> : items.map((item) => <View style={styles.accountRow} key={item.id}><View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.sku} · {item.branches?.name || branches.find((branch) => branch.id === item.branch_id)?.name || 'Branch stock'}</Text></View><Text style={item.quantity <= item.low_stock_threshold ? styles.warning : styles.price}>{item.quantity} units</Text><View style={styles.cartLineFooter}>{!item.isPromo && <View style={styles.quantity}><Pressable onPress={() => adjustStock(item, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable onPress={() => adjustStock(item, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}<Text style={styles.price}>{money(item.price * item.quantity)}</Text></View></View>)}</View>
     <View style={styles.card}><Text style={styles.cardTitle}>{isHeadAdmin ? 'Send stock to another branch' : 'Request stock transfer'}</Text>
       <Text style={styles.fieldLabel}>Stock item</Text>
       <View style={styles.roleDropdown}>
@@ -1516,7 +1550,8 @@ function AdminProducts({ products, branches, defaultBranchId, isHeadAdmin, onCre
         <Text style={styles.fieldLabel}>Product scope</Text>
         <View style={styles.roleDropdown}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: scopeMenuOpen }} onPress={() => setScopeMenuOpen((open) => !open)} style={styles.roleDropdownTrigger}>
-            <Text style={styles.roleDropdownValue}>{branches.find((branch) => branch.id === branchId)?.name || 'All branches (global)'}</Text><Text style={styles.roleDropdownChevron}>{scopeMenuOpen ? '▲' : '▼'}</Text>
+            <Text style={styles.roleDropdownValue}>{branches.find((branch) => branch.id === branchId)?.name || 'All branches (global)'}</Text>
+            <Text style={styles.roleDropdownChevron}>{scopeMenuOpen ? '▲' : '▼'}</Text>
           </Pressable>
           {scopeMenuOpen && <View style={styles.roleDropdownMenu}>
             {[{ id: '', name: 'All branches (global)' }, ...branches].map((branch) => <Pressable key={branch.id || 'global'} onPress={() => { setBranchId(branch.id); setScopeMenuOpen(false); }} style={styles.roleDropdownOption}><Text style={styles.roleDropdownOptionText}>{branch.name}</Text></Pressable>)}
@@ -1564,6 +1599,10 @@ function Promotions({ promotions, products, branches, defaultBranchId, isHeadAdm
       setTitle('');
       setDescription('');
       setProductId('');
+      setPromoType('buy_x_get_y');
+      setBuyQuantity('3');
+      setGetQuantity('1');
+      setDiscountValue('');
     } catch (saveError) {
       setError(saveError.message || 'Unable to create this promo.');
     } finally {
@@ -1677,7 +1716,7 @@ function previewPromotion(cart, promotions, branchId) {
     ? promotion.eligibleProductIds.includes(productId(item))
     : !promotion.productId || promotion.productId === productId(item);
   const promotion = promotions.find((item) => item.is_active !== false
-    && (!item.branchIds?.length || !branchId || item.branchIds.includes(branchId))
+    && (!item.branchIds?.length || branchId === '' || item.branchIds.includes(branchId))
     && (!item.starts_at || new Date(item.starts_at).getTime() <= now)
     && (!item.ends_at || new Date(item.ends_at).getTime() > now)
     && cart.some((product) => matchesProduct(item, product)));
@@ -1701,7 +1740,7 @@ function previewPromotion(cart, promotions, branchId) {
   return { items, discountTotal, promotion };
 }
 
-function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutError, search, setSearch, cart, onAdd, onPlaceOrder, onChangeQuantity }) {
+function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutError, checkoutSubmitting, search, setSearch, cart, onAdd, onPlaceOrder, onChangeQuantity }) {
   const [customerCode, setCustomerCode] = useState('');
   const [customerInfo, setCustomerInfo] = useState(null);
   const [customerLookupError, setCustomerLookupError] = useState('');
@@ -1762,7 +1801,7 @@ function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutEr
     <Header eyebrow="Service choreography" title="Point of sale" subtitle="Promotions apply automatically at checkout." />
     <TextInput value={search} onChangeText={setSearch} placeholder="Search menu" style={styles.input} />
     <View style={styles.productGrid}>{visibleProducts.slice(0, 6).map((product) => <ProductCard key={product.id} product={product} onAdd={onAdd} />)}</View>
-    <CartPanel cart={preview.items} discountTotal={preview.discountTotal} promotionLabel={preview.promotion?.title} onChangeQuantity={onChangeQuantity} onPlaceOrder={() => onPlaceOrder(customerCode.trim())} onScanCustomer={openScanner} onCustomerLookup={() => lookupCustomer()} customerInfo={customerInfo} customerLookupError={customerLookupError} buttonLabel="Charge" customerCode={customerCode} setCustomerCode={setCustomerCode} />
+    <CartPanel cart={preview.items} discountTotal={preview.discountTotal} promotionLabel={preview.promotion?.title} onChangeQuantity={onChangeQuantity} onPlaceOrder={() => onPlaceOrder(customerCode.trim())} onScanCustomer={openScanner} onCustomerLookup={() => lookupCustomer()} customerInfo={customerInfo} customerLookupError={customerLookupError} buttonLabel="Charge" customerCode={customerCode} setCustomerCode={setCustomerCode} checkoutSubmitting={checkoutSubmitting} />
     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
     {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
     {redemptionNotice ? <Text style={styles.successText}>{redemptionNotice}</Text> : null}
@@ -1798,7 +1837,7 @@ function pickupLabel(order) {
   return `${order.scheduled_pickup_at ? 'Scheduled pickup' : 'Estimated pickup'} · ${time.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError, schedulePickup = false }) {
+function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError, schedulePickup = false, checkoutSubmitting = false }) {
   const [pickupAt, setPickupAt] = useState('');
   const pickupSlots = createPickupSlots();
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -1813,7 +1852,7 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
       <View style={styles.cartLineFooter}>{!item.isPromo && <View style={styles.quantity}><Pressable accessibilityRole="button" accessibilityLabel={`Remove one ${item.name}`} onPress={() => onChangeQuantity(item.id, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Add one ${item.name}`} onPress={() => onChangeQuantity(item.id, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}<Text style={styles.price}>{money(item.price * item.quantity)}</Text></View>
     </View>) : <Text style={styles.subtitle}>Your cart is empty. Tap Add to order to get started.</Text>}
     {promotionLabel ? <Text style={styles.successText}>Promotion applied: {promotionLabel}</Text> : null}
-    {discountTotal > 0 && <Text style={styles.promoPrice}>Discount: -{money(discountTotal)}</Text>}
+    {discountTotal > 0 && <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Discount</Text><Text style={styles.price}>−{money(discountTotal)}</Text></View>}
     {schedulePickup && <View style={styles.pickupSchedule}>
       <Text style={styles.fieldLabel}>Pickup time</Text>
       <Text style={styles.subtitle}>Choose ASAP or a 15-minute slot within the next 2 hours.</Text>
@@ -1825,7 +1864,7 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
     <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Subtotal</Text><Text style={styles.price}>{money(subtotal)}</Text></View>
     {discountTotal > 0 && <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Discount</Text><Text style={styles.price}>−{money(discountTotal)}</Text></View>}
     <Text style={styles.total}>Total: {money(total)}</Text>
-    <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
+    <Pressable disabled={!cart.length || checkoutSubmitting} style={[styles.buttonDark, (!cart.length || checkoutSubmitting) && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{checkoutSubmitting ? 'Processing checkout...' : `${buttonLabel} ${money(total)}`}</Text></Pressable>
   </View>;
 }
 function Queue({ orders, onUpdateStatus, loadError }) {

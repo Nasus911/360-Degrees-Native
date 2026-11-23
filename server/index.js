@@ -8,7 +8,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -97,6 +97,65 @@ async function logActivity(actorId, branchId, action, entityType, entityId, deta
   if (error) console.error('Audit log failure:', error.message);
 }
 
+function createIdempotencyKey(req) {
+  const headerKey = req.headers['idempotency-key'];
+  if (typeof headerKey === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(headerKey.trim())) return headerKey.trim();
+  return null;
+}
+
+async function reserveCheckout(actorId, idempotencyKey) {
+  if (!supabaseAdmin) throw new Error('Checkout requires a server-only service-role key.');
+  if (!idempotencyKey) {
+    const error = new Error('An idempotency key is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const { data, error } = await supabaseAdmin.from('checkout_requests')
+    .insert({ actor_id: actorId, idempotency_key: idempotencyKey, status: 'processing' })
+    .select('*')
+    .single();
+  if (!error) return { replay: false, request: data };
+  if (error.code !== '23505') throw error;
+  const existing = await supabaseAdmin.from('checkout_requests')
+    .select('*').eq('actor_id', actorId).eq('idempotency_key', idempotencyKey).single();
+  if (existing.error) throw existing.error;
+  if (existing.data.status === 'completed') return { replay: true, request: existing.data };
+  if (existing.data.status === 'failed') {
+    const retried = await supabaseAdmin.from('checkout_requests')
+      .update({ status: 'processing', error_message: null, completed_at: null })
+      .eq('actor_id', actorId).eq('idempotency_key', idempotencyKey)
+      .select('*').single();
+    if (retried.error) throw retried.error;
+    return { replay: false, request: retried.data };
+  }
+  const duplicate = new Error('This checkout is already being processed.');
+  duplicate.statusCode = 409;
+  throw duplicate;
+}
+
+async function completeCheckout(actorId, idempotencyKey, result) {
+  const { error } = await supabaseAdmin.from('checkout_requests')
+    .update({ status: 'completed', result, completed_at: new Date().toISOString(), error_message: null })
+    .eq('actor_id', actorId).eq('idempotency_key', idempotencyKey);
+  if (error) throw new Error(`Checkout completed but could not be recorded: ${error.message}`);
+}
+
+async function failCheckout(actorId, idempotencyKey, message) {
+  const { error } = await supabaseAdmin.from('checkout_requests')
+    .update({ status: 'failed', error_message: message, completed_at: new Date().toISOString() })
+    .eq('actor_id', actorId).eq('idempotency_key', idempotencyKey);
+  if (error) console.error('Checkout failure status update failed:', error.message);
+}
+
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    return res.status(400).json({ error: 'The request body contains invalid JSON.' });
+  }
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'The request is too large.' });
+  }
+  return next(error);
+});
 
 app.get('/api/message', async (req, res) => {
   try {
@@ -619,24 +678,34 @@ app.patch('/api/inventory/transfers/:id/review', async (req, res) => {
 });
 
 app.post('/api/pos/checkout', async (req, res) => {
+  let checkoutActorId = null;
+  let checkoutKey = null;
   try {
     const result = await requireUser(req, res, ['admin', 'head_admin', 'branch_admin', 'staff', 'customer', 'guest']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'POS checkout requires a server-only service-role key.' });
+    checkoutActorId = result.user.id;
+    checkoutKey = createIdempotencyKey(req);
+    const reservation = await reserveCheckout(checkoutActorId, checkoutKey);
+    if (reservation.replay) return res.status(201).json(reservation.request.result);
     const isHeadAdmin = ['admin', 'head_admin'].includes(result.profile.role);
     const isOnlineCustomer = ['customer', 'guest'].includes(result.profile.role);
     const branchId = isHeadAdmin || isOnlineCustomer ? req.body.branchId || result.profile.branch_id : result.profile.branch_id;
     if (!branchId || !Array.isArray(req.body.items) || !req.body.items.length) {
+      await failCheckout(checkoutActorId, checkoutKey, 'Select a branch and add products before charging.');
       return res.status(400).json({ error: 'Select a branch and add products before charging.' });
     }
     const pickupAt = req.body.pickupAt || null;
     if (pickupAt && (typeof pickupAt !== 'string' || Number.isNaN(Date.parse(pickupAt)))) {
+      await failCheckout(checkoutActorId, checkoutKey, 'Choose a valid pickup time.');
       return res.status(400).json({ error: 'Choose a valid pickup time.' });
     }
     if (pickupAt && !['customer', 'guest'].includes(result.profile.role)) {
+      await failCheckout(checkoutActorId, checkoutKey, 'Scheduled pickup is available for customer orders.');
       return res.status(400).json({ error: 'Scheduled pickup is available for customer orders.' });
     }
     if (result.profile.role === 'guest' && req.body.channel && req.body.channel !== 'online') {
+      await failCheckout(checkoutActorId, checkoutKey, 'Guest accounts can only place online orders.');
       return res.status(400).json({ error: 'Guest accounts can only place online orders.' });
     }
     const checkoutArgs = {
@@ -654,10 +723,13 @@ app.post('/api/pos/checkout', async (req, res) => {
       });
     if (error) throw error;
     await logActivity(result.user.id, branchId, 'pos.checkout', 'order', data.order.id, { total: data.order.total, promotion: data.promotion?.id, customerId: data.order.customer_id });
+    await completeCheckout(checkoutActorId, checkoutKey, data);
     res.status(201).json(data);
   } catch (error) {
+    if (checkoutActorId && checkoutKey) await failCheckout(checkoutActorId, checkoutKey, error.message || 'Unable to complete checkout.');
     console.error('POS checkout failure:', error.message);
-    res.status(400).json({ error: error.message || 'Unable to complete checkout.' });
+    const status = error.statusCode || 400;
+    res.status(status).json({ error: error.message || 'Unable to complete checkout.' });
   }
 });
 
@@ -743,12 +815,21 @@ app.get('/api/orders', async (req, res) => {
 });
 
 app.post('/api/orders', async (req, res) => {
+  let checkoutActorId = null;
+  let checkoutKey = null;
   try {
     const result = await requireUser(req, res, ['customer', 'guest', 'staff', 'admin']);
     if (!result) return;
     if (!supabaseAdmin) return res.status(503).json({ error: 'Order checkout requires a server-only service-role key.' });
+    checkoutActorId = result.user.id;
+    checkoutKey = createIdempotencyKey(req);
+    const reservation = await reserveCheckout(checkoutActorId, checkoutKey);
+    if (reservation.replay) return res.status(201).json(reservation.request.result);
     const { branchId, items, pickupAt } = req.body;
-    if (!branchId || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'A branch and at least one item are required.' });
+    if (!branchId || !Array.isArray(items) || !items.length) {
+      await failCheckout(checkoutActorId, checkoutKey, 'A branch and at least one item are required.');
+      return res.status(400).json({ error: 'A branch and at least one item are required.' });
+    }
     const { data, error } = result.profile.role === 'guest'
       ? await supabaseAdmin.rpc('process_guest_checkout', {
         p_actor_id: result.user.id,
@@ -766,10 +847,12 @@ app.post('/api/orders', async (req, res) => {
         p_pickup_at: pickupAt || null,
       });
     if (error) throw error;
+    await completeCheckout(checkoutActorId, checkoutKey, data);
     res.status(201).json(data);
   } catch (error) {
+    if (checkoutActorId && checkoutKey) await failCheckout(checkoutActorId, checkoutKey, error.message || 'Unable to create order.');
     console.error('Order creation failure:', error.message);
-    res.status(400).json({ error: 'Unable to create order.' });
+    res.status(error.statusCode || 400).json({ error: error.message || 'Unable to create order.' });
   }
 });
 
