@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -24,6 +25,7 @@ import { requestApi, requestPublicApi } from './lib/api';
 import IdentityVerification from './IdentityVerification';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
+import { styles as groupStyles } from './styles';
 
 const TextInput = React.forwardRef(function AppTextInput({ style, placeholderTextColor, ...props }, ref) {
   return (
@@ -919,7 +921,6 @@ function AppContent() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.app, isMobile && styles.appMobile]}>
-        {(role === 'customer' || role === 'guest') && <Image source={require('./assets/cafe-background.png')} resizeMode="cover" style={styles.accountBackgroundImage} pointerEvents="none" accessible={false} />}
         {isMobile && <Animated.View pointerEvents={menuOpen ? 'auto' : 'none'} style={[styles.drawerBackdrop, { opacity: backdropOpacity }]}>
           <Pressable style={styles.drawerBackdropPressable} onPress={() => setMenuOpen(false)} accessibilityLabel="Close navigation menu" />
         </Animated.View>}
@@ -930,8 +931,9 @@ function AppContent() {
           <View style={styles.sidebarFooter}><Text style={styles.store}>Lipa Branch · Lipa City</Text><Text style={styles.sidebarMuted}>Open today until 10:00 PM</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
         </Animated.View>
         <View style={styles.main}>
+          <PageBackground variant={role === 'customer' || role === 'guest' ? 'shop' : 'dashboard'}>
           {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
-          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
+          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><Text style={[styles.topbarTagline, (role === 'customer' || role === 'guest') && styles.topbarTaglineLight, isMobile && styles.topbarTaglineMobile]}>“A full circle of flavor &amp; comfort”</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
           <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
             {page === 'overview' && <AdminOverview summary={reportSummary} reportError={reportError} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
@@ -978,6 +980,7 @@ function AppContent() {
               </View>
             </Modal>
           </>}
+          </PageBackground>
         </View>
       </View>
     </SafeAreaView>
@@ -985,7 +988,20 @@ function AppContent() {
 }
 
 function BrandLogo({ size = 48 }) {
-  return <Image source={require('./assets/brand-logo.png')} resizeMode="contain" style={[styles.brandLogoImage, { width: size, height: size }]} accessible accessibilityRole="image" accessibilityLabel="360 Degrees Cafe logo" />;
+  return <Image source={require('./assets/user-brand-logo.png')} resizeMode="contain" style={[styles.brandLogoImage, { width: size, height: size }]} accessible accessibilityRole="image" accessibilityLabel="360 Degrees Cafe logo" />;
+}
+
+function PageBackground({ variant, children }) {
+  const isShop = variant === 'shop';
+  return <ImageBackground
+    source={isShop ? require('./assets/cafe-bg.jpg') : require('./assets/dashboard-bg.jpg')}
+    resizeMode="cover"
+    style={styles.pageBackground}
+    imageStyle={styles.pageBackgroundImage}
+  >
+    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, isShop ? styles.shopBackgroundTint : styles.dashboardBackgroundTint]} />
+    {children}
+  </ImageBackground>;
 }
 
 function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
@@ -1032,8 +1048,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       .catch((guestError) => setError(guestError.message || 'Unable to start a guest account.'))
       .finally(() => setGuestSubmitting(false));
   };
-  return <View style={styles.authRoot}>
-    <Image source={require('./assets/cafe-background.png')} resizeMode="cover" style={[StyleSheet.absoluteFillObject, styles.authBackgroundImage]} pointerEvents="none" accessible={false} />
+  return <ImageBackground source={require('./assets/cafe-bg.jpg')} resizeMode="cover" style={styles.authRoot} imageStyle={styles.authBackgroundImage}>
     <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.authBackgroundTint]} />
     <SafeAreaView style={styles.authSafeArea}>
     <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -1080,7 +1095,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
     </ScrollView>
     </KeyboardAvoidingView>
     </SafeAreaView>
-  </View>;
+  </ImageBackground>;
 }
 
 function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
@@ -2382,12 +2397,12 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
   </>;
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   textInputDefaults: { color: '#30251f' },
   safeArea: { flex: 1, backgroundColor: '#fbf8f3' },
   authRoot: { flex: 1, backgroundColor: '#33241e', position: 'relative' },
   authBackgroundImage: { width: '100%', height: '100%', opacity: 0.42 },
-  authBackgroundTint: { backgroundColor: 'rgba(51, 36, 30, 0.2)' },
+  authBackgroundTint: { backgroundColor: 'rgba(24, 14, 10, 0.62)' },
   authSafeArea: { flex: 1, backgroundColor: 'transparent' },
   authKeyboardAvoiding: { flex: 1 },
   authPage: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -2594,4 +2609,13 @@ const styles = StyleSheet.create({
   progress: { height: 8, backgroundColor: '#866753', borderRadius: 8, marginTop: 15 },
   progressFill: { height: 8, width: '78%', backgroundColor: '#e8c4a7', borderRadius: 8 },
   chart: { color: '#d9683c', fontSize: 28, letterSpacing: 4, marginTop: 22, paddingVertical: 20 },
+  pageBackground: { flex: 1, width: '100%', height: '100%', position: 'relative' },
+  pageBackgroundImage: { width: '100%', height: '100%' },
+  shopBackgroundTint: { backgroundColor: 'rgba(248, 243, 236, 0.42)' },
+  dashboardBackgroundTint: { backgroundColor: 'rgba(248, 243, 236, 0.1)' },
+  topbarTagline: { flex: 1, textAlign: 'center', fontFamily: 'Georgia', fontStyle: 'italic', fontSize: 18, color: '#2a1c16' },
+  topbarTaglineLight: { color: '#fff', textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
+  topbarTaglineMobile: { flexBasis: '100%', textAlign: 'left', fontSize: 22 },
 });
+
+const styles = { ...baseStyles, ...groupStyles };
