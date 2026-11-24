@@ -127,6 +127,7 @@ function AppContent() {
   const [orders, setOrders] = useState([]);
   const [orderLoadError, setOrderLoadError] = useState('');
   const [orderStatusError, setOrderStatusError] = useState('');
+  const [orderRetryCount, setOrderRetryCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [notificationActionError, setNotificationActionError] = useState('');
   const [checkoutNotice, setCheckoutNotice] = useState('');
@@ -194,7 +195,7 @@ function AppContent() {
       clearInterval(timer);
       supabase.removeChannel(orderChannel).catch((error) => console.error('Order subscription cleanup failure:', error.message));
     };
-  }, [activeBranchId, isHeadAdmin, role, user]);
+  }, [activeBranchId, isHeadAdmin, role, user, orderRetryCount]);
 
   useEffect(() => {
     if (!supabase || !user) return;
@@ -415,7 +416,7 @@ function AppContent() {
             .single();
           if (profileError) throw profileError;
           if (profile && roleConfig[profile.role]) {
-            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
+            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, rewardPoints: profile.reward_points || 0, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
             setRole(profile.role);
             setPage(roleConfig[profile.role].initialPage);
             setAuthError('');
@@ -438,7 +439,7 @@ function AppContent() {
             return;
           }
           if (active && profile && roleConfig[profile.role]) {
-            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
+            setUser({ id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, rewardPoints: profile.reward_points || 0, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at });
             setRole(profile.role);
             setPage(roleConfig[profile.role].initialPage);
           }
@@ -489,7 +490,7 @@ function AppContent() {
       if (profileError) throw profileError;
       if (!profile || !roleConfig[profile.role]) throw new Error('Your account profile is incomplete. Contact an administrator.');
       if (profile.is_active === false) throw new Error('This account is inactive. Contact a head administrator.');
-      const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };
+      const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, rewardPoints: profile.reward_points || 0, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };
       setUser(signedIn); setRole(signedIn.role); setPage(roleConfig[signedIn.role].initialPage);
     }} onRegister={async (account) => {
       const { data, error } = await supabase.auth.signUp({
@@ -509,7 +510,7 @@ function AppContent() {
       if (!data.session) throw new Error('Registration succeeded. Confirm your email before signing in.');
       const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
       if (profileError) throw profileError;
-      const registered = { ...account, customerCode: profile.customer_code, id: profile.id };
+      const registered = { ...account, customerCode: profile.customer_code, rewardPoints: profile.reward_points || 0, id: profile.id };
       setUser(registered); setRole('customer'); setPage(roleConfig.customer.initialPage);
     }} />;
   }
@@ -712,7 +713,7 @@ function AppContent() {
       return;
     }
   };
-  const placeOrder = async (pickupAt = null) => {
+  const placeOrder = async (pickupAt = null, paymentMethod = 'fake_money') => {
     if (!cart.length) return;
     setCheckoutNotice('');
     setCheckoutError('');
@@ -721,14 +722,15 @@ function AppContent() {
     try {
       const result = await requestApi('/api/pos/checkout', {
         method: 'POST',
-        body: JSON.stringify({ branchId, pickupAt, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
+        body: JSON.stringify({ branchId, pickupAt, paymentMethod, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
       });
       setOrders((current) => [toClientOrder({
         ...result.order,
         order_items: result.items,
         promotions: { title: result.promotion?.title },
       }, user), ...current]);
-      setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : 'Order placed.'}`);
+      if (result.pointsBalance != null) setUser((current) => ({ ...current, rewardPoints: result.pointsBalance }));
+      setCheckoutNotice(`${paymentMethod === 'points' ? `${result.pointsRedeemed} points used. ` : 'Simulated payment successful. '}${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : paymentMethod === 'points' ? 'No points earned on points-paid orders.' : 'Order placed.'}`);
       setCart([]);
       setCartOpen(false);
     } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
@@ -811,7 +813,7 @@ function AppContent() {
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
             {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
-            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} statusError={orderStatusError} />}
+            {page === 'queue' && <Queue orders={orders} onUpdateStatus={updateOrderStatus} loadError={orderLoadError} statusError={orderStatusError} onRetry={() => setOrderRetryCount((count) => count + 1)} />}
             {page === 'receipts' && <Receipts orders={orders} />}
             {page === 'home' && <CustomerHome products={branchProducts} promotions={promotions} branchId={activeBranchId} branches={branches} checkoutNotice={checkoutNotice} checkoutError={checkoutError} user={user} orders={orders} notifications={notifications} dismissedPromoKey={dismissedPromoKey} onDismissNotification={dismissNotification} onDismissPromotion={setDismissedPromoKey} onNavigate={navigate} onAdd={addToCart} />}
             {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
@@ -836,7 +838,7 @@ function AppContent() {
                 <View style={styles.cartModalSheet}>
                   <View style={styles.cartModalHeader}><Text style={styles.title}>Your cart</Text><Pressable accessibilityRole="button" accessibilityLabel="Close cart" style={styles.closeButtonLight} onPress={() => setCartOpen(false)}><Text style={styles.closeIconLight}>×</Text></Pressable></View>
                   <ScrollView keyboardShouldPersistTaps="handled">
-                    <CartPanel cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} schedulePickup />
+                    <CartPanel cart={cart} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} onPlaceOrder={placeOrder} schedulePickup customerPayment={role === 'customer'} availablePoints={user.rewardPoints || 0} promotions={promotions} branchId={activeBranchId || user.branchId} />
                     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
                     {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
                   </ScrollView>
@@ -1584,8 +1586,8 @@ function ProductCard({ product, onAdd, onDelete }) {
   </>;
 }
 
-function OptionChoice({ label, selected, onPress }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.optionChoice, selected && styles.optionChoiceSelected]}><Text style={[styles.optionChoiceText, selected && styles.optionChoiceTextSelected]}>{label}</Text></Pressable>;
+function OptionChoice({ label, selected, onPress, disabled = false }) {
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress} style={[styles.optionChoice, selected && styles.optionChoiceSelected, disabled && styles.disabled]}><Text style={[styles.optionChoiceText, selected && styles.optionChoiceTextSelected]}>{label}</Text></Pressable>;
 }
 
 function AdminProducts({ products, branches, defaultBranchId, isHeadAdmin, onCreateProduct, onDeleteProduct }) {
@@ -1940,22 +1942,29 @@ function pickupLabel(order) {
   return `${order.scheduled_pickup_at ? 'Scheduled pickup' : 'Estimated pickup'} · ${time.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError, schedulePickup = false }) {
+function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place pickup order', discountTotal = 0, promotionLabel, customerCode, setCustomerCode, onScanCustomer, onCustomerLookup, customerInfo, customerLookupError, schedulePickup = false, customerPayment = false, availablePoints = 0, promotions = [], branchId }) {
   const [pickupAt, setPickupAt] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('fake_money');
   const pickupSlots = createPickupSlots();
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const total = Math.max(0, subtotal - discountTotal);
+  const customerPreview = customerPayment ? previewPromotion(cart, promotions, branchId) : null;
+  const displayCart = customerPreview?.items || cart;
+  const subtotal = displayCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const appliedDiscount = customerPreview?.discountTotal ?? discountTotal;
+  const appliedPromotion = customerPreview?.promotion?.title || promotionLabel;
+  const total = Math.max(0, subtotal - appliedDiscount);
+  const pointsRequired = Math.ceil(total);
+  const canPayWithPoints = availablePoints >= pointsRequired;
   return <View style={styles.card}>
     <Text style={styles.cardTitle}>Cart ({cart.reduce((sum, item) => sum + item.quantity, 0)})</Text>
     {setCustomerCode && <View style={styles.customerIdRow}><TextInput value={customerCode} onChangeText={setCustomerCode} onBlur={onCustomerLookup} placeholder="Customer ID (optional)" autoCapitalize="characters" style={[styles.input, styles.customerIdInput]} />{onScanCustomer && <Pressable style={styles.smallButton} onPress={onScanCustomer}><Text style={styles.buttonText}>Scan QR</Text></Pressable>}</View>}
     {customerInfo && <Text style={styles.successText}>{customerInfo.full_name} · {customerInfo.reward_points} points</Text>}
     {customerLookupError ? <Text style={styles.formError}>{customerLookupError}</Text> : null}
-    {cart.length ? cart.map((item) => <View style={styles.cartRow} key={item.id}>
+    {cart.length ? displayCart.map((item) => <View style={styles.cartRow} key={item.id}>
       <View><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.subtitle}>{item.promoLabel || `${money(item.price)} each${item.customization ? ` · ${item.customization.size === 'large' ? 'Large' : 'Regular'}, ${item.customization.milk === 'oat' ? 'Oat milk' : 'Dairy'}, ${item.customization.sweetness}% sweet${item.customization.extraEspresso ? ', extra shot' : ''}` : ''}`}</Text></View>
       <View style={styles.cartLineFooter}>{!item.isPromo && <View style={styles.quantity}><Pressable accessibilityRole="button" accessibilityLabel={`Remove one ${item.name}`} onPress={() => onChangeQuantity(item.id, -1)} style={styles.quantityButton}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Add one ${item.name}`} onPress={() => onChangeQuantity(item.id, 1)} style={styles.quantityButton}><Text>+</Text></Pressable></View>}<Text style={styles.price}>{money(item.price * item.quantity)}</Text></View>
     </View>) : <Text style={styles.subtitle}>Your cart is empty. Tap Add to order to get started.</Text>}
-    {promotionLabel ? <Text style={styles.successText}>Promotion applied: {promotionLabel}</Text> : null}
-    {discountTotal > 0 && <Text style={styles.promoPrice}>Discount: -{money(discountTotal)}</Text>}
+    {appliedPromotion ? <Text style={styles.successText}>Promotion applied: {appliedPromotion}</Text> : null}
+    {appliedDiscount > 0 && <Text style={styles.promoPrice}>Discount: -{money(appliedDiscount)}</Text>}
     {schedulePickup && <View style={styles.pickupSchedule}>
       <Text style={styles.fieldLabel}>Pickup time</Text>
       <Text style={styles.subtitle}>Choose ASAP or a 15-minute slot within the next 2 hours.</Text>
@@ -1965,12 +1974,21 @@ function CartPanel({ cart, onChangeQuantity, onPlaceOrder, buttonLabel = 'Place 
       </View>
     </View>}
     <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Subtotal</Text><Text style={styles.price}>{money(subtotal)}</Text></View>
-    {discountTotal > 0 && <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Discount</Text><Text style={styles.price}>−{money(discountTotal)}</Text></View>}
+    {appliedDiscount > 0 && <View style={styles.cartSubtotalRow}><Text style={styles.subtitle}>Discount</Text><Text style={styles.price}>−{money(appliedDiscount)}</Text></View>}
     <Text style={styles.total}>Total: {money(total)}</Text>
-    <Pressable disabled={!cart.length} style={[styles.buttonDark, !cart.length && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
+    {customerPayment && <>
+      <Text style={styles.fieldLabel}>Payment method</Text>
+      <View style={styles.optionRow}>
+        <OptionChoice label="Simulated money" selected={paymentMethod === 'fake_money'} onPress={() => setPaymentMethod('fake_money')} />
+        <OptionChoice label="Points" selected={paymentMethod === 'points'} disabled={!canPayWithPoints} onPress={() => setPaymentMethod('points')} />
+      </View>
+      <Text style={canPayWithPoints ? styles.subtitle : styles.formError}>Your points: {availablePoints} · Needed: {pointsRequired} (₱1 = 1 point){canPayWithPoints ? '' : ' · Not enough points for this order'}</Text>
+      {paymentMethod === 'fake_money' && <Text style={styles.subtitle}>Simulated payment only; no real money is charged.</Text>}
+    </>}
+    <Pressable disabled={!cart.length || (customerPayment && paymentMethod === 'points' && !canPayWithPoints)} style={[styles.buttonDark, (!cart.length || (customerPayment && paymentMethod === 'points' && !canPayWithPoints)) && styles.disabled]} onPress={() => onPlaceOrder(schedulePickup ? pickupAt || null : undefined, paymentMethod)}><Text style={styles.buttonText}>{buttonLabel} {money(total)}</Text></Pressable>
   </View>;
 }
-function Queue({ orders, onUpdateStatus, loadError, statusError }) {
+function Queue({ orders, onUpdateStatus, loadError, statusError, onRetry }) {
   const [expandedCustomer, setExpandedCustomer] = useState(null);
   const sortedOrders = [...orders].sort((left, right) => {
     const leftTime = new Date(left.scheduled_pickup_at || left.estimated_pickup_at || left.created_at || 0).getTime();
@@ -1988,7 +2006,7 @@ function Queue({ orders, onUpdateStatus, loadError, statusError }) {
   }, []);
   return <>
     <Header eyebrow="Service choreography" title="Order queue" subtitle="Tap a customer name to expand their orders. Orders are sorted by pickup time." />
-    {loadError ? <Text style={styles.formError}>Unable to sync orders: {loadError}</Text> : null}
+    {loadError ? <View style={styles.formError}><Text>Unable to sync orders: {loadError}</Text><Pressable style={styles.buttonSecondary} onPress={onRetry}><Text>Retry</Text></Pressable></View> : null}
     {statusError ? <Text style={styles.formError}>Unable to update order: {statusError}</Text> : null}
     {upcomingOrders.length > 0 && <View style={styles.card}><Text style={styles.cardTitle}>Upcoming pickups</Text>{upcomingOrders.slice(0, 8).map((order) => <Text key={`pickup-${order.id}`} style={styles.subtitle}>{pickupLabel(order) || 'Pickup time pending'} · #{order.id} · {order.customer}</Text>)}</View>}
     {customerGroups.length ? customerGroups.map((group) => {

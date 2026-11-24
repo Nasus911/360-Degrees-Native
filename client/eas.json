@@ -12,11 +12,17 @@
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://YOUR-SERVICE.onrender.com"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://YOUR-SERVICE.onrender.com"
+      }
     }
   },
   "submit": {
