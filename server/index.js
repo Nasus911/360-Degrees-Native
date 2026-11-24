@@ -20,10 +20,13 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+const hasSupabaseConfiguration = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_KEY);
+const supabase = hasSupabaseConfiguration
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  : null;
+const supabaseAdmin = hasSupabaseConfiguration && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
 const IDENTITY_BUCKET = 'identity-verification';
@@ -33,8 +36,11 @@ const IDENTITY_PROCESSOR_URL = process.env.IDENTITY_VERIFICATION_URL;
 const IDENTITY_PROCESSOR_TOKEN = process.env.IDENTITY_VERIFICATION_TOKEN;
 
 function requireConfiguration() {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY || process.env.SUPABASE_URL === 'https://supabase.co' || process.env.SUPABASE_KEY === 'your-anon-public-api-key-here') {
-    throw new Error('Configure SUPABASE_URL and SUPABASE_KEY in server/.env before starting the API.');
+  if (!process.env.SUPABASE_URL) {
+    console.error('Missing required environment variable SUPABASE_URL. Database-backed API routes are unavailable.');
+  }
+  if (!process.env.SUPABASE_KEY) {
+    console.error('Missing required environment variable SUPABASE_KEY. Database-backed API routes are unavailable.');
   }
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.warn('Missing optional environment variable SUPABASE_SERVICE_ROLE_KEY. Admin account creation and identity verification will be unavailable.');
@@ -45,6 +51,7 @@ function requireConfiguration() {
 }
 
 async function getUser(req) {
+  if (!supabase) return null;
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (!token) return null;
   const { data, error } = await supabase.auth.getUser(token);
