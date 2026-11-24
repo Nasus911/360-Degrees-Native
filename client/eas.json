@@ -14,14 +14,14 @@
       "autoIncrement": true,
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR-SERVICE.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://three60-degrees-native.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR-SERVICE.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://three60-degrees-native.onrender.com"
       }
     }
   },
