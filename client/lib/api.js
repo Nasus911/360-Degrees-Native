@@ -28,7 +28,7 @@ async function fetchApi(url, path, options, accessToken) {
 }
 
 async function requestApiWithToken(path, options, accessToken) {
-  if (!apiUrl || apiUrl.includes('YOUR-SERVICE')) {
+  if (!apiUrl) {
     throw new Error('Set EXPO_PUBLIC_API_URL to your Render URL in client/.env and client/eas.json.');
   }
 
