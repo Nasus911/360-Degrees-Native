@@ -20,6 +20,13 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+app.use('/api', (_req, res, next) => {
+  if (supabase) return next();
+  res.status(503).json({
+    error: 'Database configuration is missing. Set SUPABASE_URL and SUPABASE_KEY in Render.',
+  });
+});
+
 const hasSupabaseConfiguration = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_KEY);
 const supabase = hasSupabaseConfiguration
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
