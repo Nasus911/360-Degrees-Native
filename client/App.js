@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Image,
   ImageBackground,
@@ -40,35 +39,16 @@ const TextInput = React.forwardRef(function AppTextInput({ style, placeholderTex
   );
 });
 
-const products = [
-  { id: 1, name: 'Iced Spanish Latte', category: 'Coffee', price: 185, stock: 38, emoji: '🥤', description: 'Local espresso, condensed milk, silky and balanced.' },
-  { id: 2, name: 'Ube Cloud Latte', category: 'Coffee', price: 215, stock: 8, emoji: '🧋', description: 'Earthy ube and sea-salt cream.' },
-  { id: 3, name: 'Sea Salt Cold Brew', category: 'Cold', price: 215, stock: 24, emoji: '🧋', description: '18-hour brew with soft savory foam.' },
-  { id: 4, name: 'Flat White', category: 'Coffee', price: 190, stock: 31, emoji: '☕', description: 'Double espresso with velvety steamed milk.' },
-  { id: 5, name: 'Calamansi Espresso', category: 'Cold', price: 175, stock: 19, emoji: '🍋', description: 'Bright citrus sparkle and double espresso.' },
-  { id: 6, name: 'Matcha Strawberry', category: 'Matcha', price: 225, stock: 14, emoji: '🍵', description: 'Ceremonial matcha layered with strawberry.' },
-  { id: 7, name: 'Butter Croissant', category: 'Food', price: 125, stock: 17, emoji: '🥐', description: 'Flaky, baked fresh every morning.' },
-  { id: 8, name: 'Banana Bread', category: 'Food', price: 110, stock: 12, emoji: '🍰', description: 'A soft slice with toasted walnuts.' },
-  { id: 9, name: 'Oat Milk', category: 'Inventory', price: 0, stock: 6, emoji: '🥛', description: 'Barista oat milk cartons.' },
-  { id: 10, name: 'Ube Syrup', category: 'Inventory', price: 0, stock: 8, emoji: '🫙', description: 'House ube syrup bottles.' },
-];
-
 const roleConfig = {
-  admin: { label: 'Head Admin', person: 'Richard Dean Briones', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
-  head_admin: { label: 'Head Admin', person: '', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
-  branch_admin: { label: 'Branch Admin', person: '', subtitle: 'Branch administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['inventory', 'Inventory', '▪'], ['team', 'Employees', '♙'], ['receipts', 'Today orders', '◷'], ['audit', 'Activity log', '▣']] },
-  cashier: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
-  barista: { label: 'Barista/Cashier', person: '', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
-  staff: { label: 'Barista/Cashier', person: 'Luis Reyes', subtitle: 'Barista/Cashier · Shift A', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
-  customer: { label: 'Customer', person: '', subtitle: '360 Rewards member', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['wallet', 'Wallet & rewards', '◎'], ['identity-verification', 'Identity verification', 'ID'], ['account', 'Manage account', '♙'], ['branch', 'Pickup branch', '⌖']] },
-  guest: { label: 'Guest', person: '', subtitle: 'Temporary guest account · no loyalty points', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['branch', 'Pickup branch', '⌖']] },
+  admin: { label: 'Head Admin', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
+  head_admin: { label: 'Head Admin', subtitle: 'Head administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['branches', 'Branches', '⌖'], ['inventory', 'Inventory', '▪'], ['products', 'Products', '☕'], ['promotions', 'Promotions', '%'], ['loyalty', 'Loyalty rules', '◎'], ['team', 'Employees', '♙'], ['audit', 'Activity log', '◷']] },
+  branch_admin: { label: 'Branch Admin', subtitle: 'Branch administrator', initialPage: 'overview', pages: [['overview', 'Overview', '⌂'], ['inventory', 'Inventory', '▪'], ['team', 'Employees', '♙'], ['receipts', 'Today orders', '◷'], ['audit', 'Activity log', '▣']] },
+  cashier: { label: 'Barista/Cashier', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  barista: { label: 'Barista/Cashier', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  staff: { label: 'Barista/Cashier', subtitle: 'Barista/Cashier', initialPage: 'pos', pages: [['pos', 'Point of sale', '▣'], ['queue', 'Order queue', '◷'], ['receipts', 'Receipts', '▤']] },
+  customer: { label: 'Customer', subtitle: '360 Rewards member', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['wallet', 'Wallet & rewards', '◎'], ['identity-verification', 'Identity verification', 'ID'], ['account', 'Manage account', '♙'], ['branch', 'Pickup branch', '⌖']] },
+  guest: { label: 'Guest', subtitle: 'Temporary guest account · no loyalty points', initialPage: 'home', pages: [['home', 'Home', '⌂'], ['menu', 'Menu', '☕'], ['orders', 'My orders', '◷'], ['branch', 'Pickup branch', '⌖']] },
 };
-
-const demoAccounts = [
-  { id: 'admin-demo', name: 'Richard Dean Briones', email: 'admin@360degrees.cafe', password: 'admin123', role: 'admin' },
-  { id: 'staff-demo', name: 'Luis Reyes', email: 'staff@360degrees.cafe', password: 'staff123', role: 'staff' },
-  { id: 'customer-demo', name: 'Marco Rafaeles', email: 'customer@360degrees.cafe', password: 'customer123', role: 'customer', customerCode: 'CS-2026-0001' },
-];
 
 const money = (amount) => `₱${Number(amount).toLocaleString('en-PH')}`;
 const orderStatusLabels = {
@@ -128,8 +108,10 @@ function AppContent() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState('');
-  const [accounts, setAccounts] = useState(demoAccounts);
-  const [catalogProducts, setCatalogProducts] = useState(products);
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [accountsLoadError, setAccountsLoadError] = useState('');
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [promotions, setPromotions] = useState([]);
   const [dismissedPromoKey, setDismissedPromoKey] = useState('');
   const [branches, setBranches] = useState([]);
@@ -143,10 +125,10 @@ function AppContent() {
   const [cartFeedback, setCartFeedback] = useState(null);
   const [search, setSearch] = useState('');
   const [orders, setOrders] = useState([]);
-  const [localActivityLogs, setLocalActivityLogs] = useState([]);
   const [orderLoadError, setOrderLoadError] = useState('');
   const [orderStatusError, setOrderStatusError] = useState('');
   const [notifications, setNotifications] = useState([]);
+  const [notificationActionError, setNotificationActionError] = useState('');
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -162,6 +144,11 @@ function AppContent() {
   const drawerHasOpened = useRef(false);
   const config = roleConfig[role];
   const isHeadAdmin = role === 'admin' || role === 'head_admin';
+  const currentBranch = branches.find((branch) => branch.id === (activeBranchId || user?.branchId));
+  const branchName = currentBranch?.name || (isHeadAdmin ? 'All branches' : 'Branch unavailable');
+  const branchLocation = currentBranch
+    ? [currentBranch.city, currentBranch.address].filter(Boolean).join(' · ')
+    : isHeadAdmin ? 'Organization-wide access' : 'Branch details unavailable';
   const branchProducts = useMemo(() => catalogProducts.filter((product) => product.category !== 'Inventory'
     && (!product.branch_id || !activeBranchId || product.branch_id === activeBranchId)), [activeBranchId, catalogProducts]);
   const visibleProducts = useMemo(() => branchProducts.filter((product) => product.name.toLowerCase().includes(search.toLowerCase())), [branchProducts, search]);
@@ -236,9 +223,7 @@ function AppContent() {
     if (!user) return;
     if (role === 'customer' || role === 'guest') {
       if (!supabase) {
-        const demoBranch = { id: 'demo-lipa', name: 'Lipa Branch', city: 'Lipa City', is_active: true };
-        setBranches([demoBranch]);
-        if (!user.branchId) setActiveBranchId((current) => current || demoBranch.id);
+        setBranches([]);
         return;
       }
       let active = true;
@@ -271,11 +256,7 @@ function AppContent() {
     }
     if (!['admin', 'head_admin', 'branch_admin', 'cashier', 'barista', 'staff'].includes(role)) return;
     if (!supabase) {
-      const demoBranches = [{ id: 'demo-lipa', name: 'Lipa Branch', city: 'Lipa City', address: 'Lipa City, Batangas', is_active: true }, { id: 'demo-batangas-city', name: 'Batangas City', city: 'Batangas City', address: 'Batangas City, Batangas', is_active: true }];
-      setBranches(demoBranches);
-      if (role === 'branch_admin' || role === 'cashier' || role === 'barista' || role === 'staff') {
-        setActiveBranchId((current) => current && current !== user.branchId ? user.branchId || current : user.branchId || current || 'demo-lipa');
-      }
+      setBranches([]);
       return;
     }
     let active = true;
@@ -309,16 +290,26 @@ function AppContent() {
   useEffect(() => {
     if (!supabase || !user || !['admin', 'head_admin', 'branch_admin'].includes(role)) return;
     let active = true;
+    setAccounts([]);
+    setAccountsLoading(true);
+    setAccountsLoadError('');
     requestApi('/api/admin/accounts').then((data) => {
-      if (active) setAccounts(data.map((account) => ({
-        ...account,
-        name: account.full_name,
-        contactNumber: account.contact_number || '',
-        branchId: account.branch_id,
-        isActive: account.is_active,
-      })));
+      if (active) {
+        setAccounts(data.map((account) => ({
+          ...account,
+          name: account.full_name,
+          contactNumber: account.contact_number || '',
+          branchId: account.branch_id,
+          isActive: account.is_active,
+        })));
+      }
     }).catch((error) => {
-      if (active) console.error('Employee list lookup failure:', error.message);
+      if (active) {
+        setAccountsLoadError(error.message || 'Unable to load registered accounts.');
+        console.error('Employee list lookup failure:', error.message);
+      }
+    }).finally(() => {
+      if (active) setAccountsLoading(false);
     });
     return () => { active = false; };
   }, [role, user]);
@@ -326,25 +317,7 @@ function AppContent() {
   useEffect(() => {
     if (page !== 'overview' || !user || !['admin', 'head_admin', 'branch_admin'].includes(role)) return;
     if (!supabase) {
-      setReportSummary({
-        sales: 84620,
-        orders: 186,
-        averageOrder: 455,
-        customers: 91,
-        users: 94,
-        totalStock: 177,
-        stockStatus: { lowStock: 2, healthy: 8 },
-        salesByDay: [
-          { day: 'Mon', sales: 8200 }, { day: 'Tue', sales: 10400 }, { day: 'Wed', sales: 9600 },
-          { day: 'Thu', sales: 12800 }, { day: 'Fri', sales: 14200 }, { day: 'Sat', sales: 16700 }, { day: 'Sun', sales: 12720 },
-        ],
-        topProducts: [{ name: 'Iced Spanish Latte', units: 148, sales: 27380 }, { name: 'Ube Cloud Latte', units: 92, sales: 19780 }],
-        lowStock: 2,
-        inventoryValue: 23400,
-        costOfGoods: 36600,
-        grossProfit: 48020,
-      });
-      setReportError('');
+      setReportSummary(null);
       return;
     }
     let active = true;
@@ -402,6 +375,16 @@ function AppContent() {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && active) {
+        setUser(null);
+        setRole(null);
+        setPage('overview');
+        setCart([]);
+        setSearch('');
+        setNotifications([]);
+      }
+    });
     const processAuthUrl = async (url) => {
       if (!url) return;
       try {
@@ -470,76 +453,64 @@ function AppContent() {
     Linking.getInitialURL().then((url) => processAuthUrl(url)).finally(restoreSession);
     return () => {
       active = false;
+      authSubscription.unsubscribe();
       linkSubscription.remove();
     };
   }, []);
 
   if (!user || !config) {
+    if (!supabase) return <ServiceUnavailableScreen />;
     if (authLoading) return <SafeAreaView style={styles.authSafeArea}><Text style={styles.authSubtitle}>Loading your account...</Text></SafeAreaView>;
-    return <AuthScreen accounts={supabase ? [] : accounts} authError={authError} onGuest={async (fullName) => {
-      let guest;
-      if (supabase) {
-        const result = await requestPublicApi('/api/auth/guest', {
-          method: 'POST',
-          body: JSON.stringify({ fullName }),
-        });
-        if (!result?.session || !result?.profile?.id) {
-          throw new Error('The guest service returned an incomplete account response. Try again.');
-        }
-        const { error } = await supabase.auth.setSession(result.session);
-        if (error) throw error;
-        guest = {
-          id: result.profile.id,
-          name: result.profile.full_name,
-          email: result.profile.email,
-          role: 'guest',
-          customerCode: result.profile.customer_code,
-          guestExpiresAt: result.profile.guest_expires_at,
-        };
-      } else {
-        const guestId = `GUEST-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-        guest = { id: guestId, name: fullName, email: '', role: 'guest', customerCode: guestId, guestExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() };
+    return <AuthScreen authError={authError} onGuest={async (fullName) => {
+      const result = await requestPublicApi('/api/auth/guest', {
+        method: 'POST',
+        body: JSON.stringify({ fullName }),
+      });
+      if (!result?.session || !result?.profile?.id) {
+        throw new Error('The guest service returned an incomplete account response. Try again.');
       }
+      const { error } = await supabase.auth.setSession(result.session);
+      if (error) throw error;
+      const guest = {
+        id: result.profile.id,
+        name: result.profile.full_name,
+        email: result.profile.email,
+        role: 'guest',
+        customerCode: result.profile.customer_code,
+        guestExpiresAt: result.profile.guest_expires_at,
+      };
       setUser(guest);
       setRole('guest');
       setPage(roleConfig.guest.initialPage);
     }} onLogin={async (account) => {
-      if (supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: account.email, password: account.password });
-        if (error) throw new Error('Email or password is incorrect.');
-        const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-        if (profileError) throw profileError;
-        if (!profile || !roleConfig[profile.role]) throw new Error('Your account profile is incomplete. Contact an administrator.');
-        if (profile.is_active === false) throw new Error('This account is inactive. Contact a head administrator.');
-        const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };
-        setUser(signedIn); setRole(signedIn.role); setPage(roleConfig[signedIn.role].initialPage);
-      } else {
-        setUser(account); setRole(account.role); setPage(roleConfig[account.role].initialPage);
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email: account.email, password: account.password });
+      if (error) throw new Error('Email or password is incorrect.');
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+      if (profileError) throw profileError;
+      if (!profile || !roleConfig[profile.role]) throw new Error('Your account profile is incomplete. Contact an administrator.');
+      if (profile.is_active === false) throw new Error('This account is inactive. Contact a head administrator.');
+      const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };
+      setUser(signedIn); setRole(signedIn.role); setPage(roleConfig[signedIn.role].initialPage);
     }} onRegister={async (account) => {
-      if (supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email: account.email,
-          password: account.password,
-          options: {
-            data: { full_name: account.name, contact_number: account.contactNumber },
-            emailRedirectTo: '360degrees://auth/callback',
-          },
-        });
-        if (error) {
-          if (error.message?.toLowerCase().includes('email rate limit')) {
-            throw new Error('Email sending is temporarily unavailable. Please try again later or contact support.');
-          }
-          throw error;
+      const { data, error } = await supabase.auth.signUp({
+        email: account.email,
+        password: account.password,
+        options: {
+          data: { full_name: account.name, contact_number: account.contactNumber },
+          emailRedirectTo: '360degrees://auth/callback',
+        },
+      });
+      if (error) {
+        if (error.message?.toLowerCase().includes('email rate limit')) {
+          throw new Error('Email sending is temporarily unavailable. Please try again later or contact support.');
         }
-        if (!data.session) throw new Error('Registration succeeded. Confirm your email before signing in.');
-        const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-        if (profileError) throw profileError;
-        const registered = { ...account, customerCode: profile.customer_code, id: profile.id };
-        setUser(registered); setRole('customer'); setPage(roleConfig.customer.initialPage);
-      } else {
-        setAccounts((current) => [...current, account]); setUser(account); setRole(account.role); setPage(roleConfig[account.role].initialPage);
+        throw error;
       }
+      if (!data.session) throw new Error('Registration succeeded. Confirm your email before signing in.');
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+      if (profileError) throw profileError;
+      const registered = { ...account, customerCode: profile.customer_code, id: profile.id };
+      setUser(registered); setRole('customer'); setPage(roleConfig.customer.initialPage);
     }} />;
   }
 
@@ -593,171 +564,129 @@ function AppContent() {
     showCartFeedback(product.name);
   };
   const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) throw error;
     setUser(null); setRole(null); setPage('overview'); setCart([]); setSearch(''); setNotifications([]);
   };
   const saveAccountProfile = async ({ fullName, contactNumber, address }) => {
-    if (supabase) {
-      const result = await requestApi('/api/me', {
-        method: 'PATCH',
-        body: JSON.stringify({ fullName, contactNumber, address }),
-      });
-      setUser((current) => ({ ...current, name: result.full_name, contactNumber: result.contact_number, address: result.address || '' }));
-      return;
-    }
-    setUser((current) => ({ ...current, name: fullName, contactNumber, address }));
-    setAccounts((current) => current.map((account) => account.id === user.id ? { ...account, name: fullName, contactNumber, address } : account));
+    const result = await requestApi('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ fullName, contactNumber, address }),
+    });
+    setUser((current) => ({ ...current, name: result.full_name, contactNumber: result.contact_number, address: result.address || '' }));
   };
   const changeAccountPassword = async (newPassword) => {
-    if (supabase) {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-      return;
-    }
-    setUser((current) => ({ ...current, password: newPassword }));
-    setAccounts((current) => current.map((account) => account.id === user.id ? { ...account, password: newPassword } : account));
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
   };
   const recordActivity = async (action, entityType, entityId, details = {}, branchId = activeBranchId || user.branchId || null) => {
-    if (!supabase) return;
     const { error } = await supabase.from('activity_logs').insert({ actor_id: user.id, branch_id: branchId, action, entity_type: entityType, entity_id: String(entityId), details });
     if (error) console.error('Activity log write failure:', error.message);
   };
   const createProduct = async ({ name, category, price, unitCost, initialStock, description, photo, branchId }) => {
+    if (!supabase) throw new Error('Account service is unavailable.');
     let imageUrl = photo.uri;
-    if (supabase) {
-      const imageResponse = await fetch(photo.uri);
-      if (!imageResponse.ok) throw new Error('Unable to read the selected product photo.');
-      const imageBlob = await imageResponse.blob();
-      const extension = (photo.fileName?.split('.').pop() || photo.mimeType?.split('/').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const imagePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
-      const { data: uploadedImage, error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(imagePath, imageBlob, { contentType: photo.mimeType || imageBlob.type || 'image/jpeg', cacheControl: '3600' });
-      if (uploadError) throw uploadError;
-      imageUrl = supabase.storage.from('product-images').getPublicUrl(uploadedImage.path).data.publicUrl;
-      const { data, error } = await supabase.from('products').insert({
-        name,
-        category,
-        branch_id: branchId || null,
-        price: Number(price),
-        unit_cost: Number(unitCost),
-        description,
-        image_url: imageUrl,
-        emoji: '☕',
-        is_available: true,
-      }).select().single();
-      if (error) {
-        await supabase.storage.from('product-images').remove([uploadedImage.path]);
-        throw error;
-      }
-      const branchResult = branchId
-        ? { data: [{ id: branchId }], error: null }
-        : await supabase.from('branches').select('id').eq('is_active', true);
-      if (branchResult.error || !branchResult.data.length) {
-        await supabase.from('products').delete().eq('id', data.id);
-        await supabase.storage.from('product-images').remove([uploadedImage.path]);
-        throw branchResult.error || new Error('No active branches are available for initial stock.');
-      }
-      const stockRows = branchResult.data.map((branch) => ({
-        product_id: data.id,
-        branch_id: branch.id,
-        name,
-        sku: `PRD-${data.id.slice(0, 8)}-${branch.id.slice(0, 4)}`,
-        unit: 'unit',
-        quantity: initialStock,
-        low_stock_threshold: 5,
-        unit_cost: Number(unitCost),
-      }));
-      const { error: stockError } = await supabase.from('inventory').insert(stockRows);
-      if (stockError) {
-        await supabase.from('products').delete().eq('id', data.id);
-        await supabase.storage.from('product-images').remove([uploadedImage.path]);
-        throw stockError;
-      }
-      setCatalogProducts((current) => [toProduct(data), ...current]);
-      await recordActivity('product.created', 'product', data.id, { name, category, price, unitCost }, branchId);
-      return;
-    }
-    setCatalogProducts((current) => [{
-      id: `demo-product-${Date.now()}`,
+    const imageResponse = await fetch(photo.uri);
+    if (!imageResponse.ok) throw new Error('Unable to read the selected product photo.');
+    const imageBlob = await imageResponse.blob();
+    const extension = (photo.fileName?.split('.').pop() || photo.mimeType?.split('/').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const imagePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+    const { data: uploadedImage, error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(imagePath, imageBlob, { contentType: photo.mimeType || imageBlob.type || 'image/jpeg', cacheControl: '3600' });
+    if (uploadError) throw uploadError;
+    imageUrl = supabase.storage.from('product-images').getPublicUrl(uploadedImage.path).data.publicUrl;
+    const { data, error } = await supabase.from('products').insert({
       name,
       category,
       branch_id: branchId || null,
       price: Number(price),
       unit_cost: Number(unitCost),
-      stock: initialStock,
       description,
-      imageUrl,
+      image_url: imageUrl,
       emoji: '☕',
-      stock: 0,
-    }, ...current]);
-    await recordActivity('product.created', 'product', name, { name, category, price, unitCost }, branchId);
+      is_available: true,
+    }).select().single();
+    if (error) {
+      await supabase.storage.from('product-images').remove([uploadedImage.path]);
+      throw error;
+    }
+    const branchResult = branchId
+      ? { data: [{ id: branchId }], error: null }
+      : await supabase.from('branches').select('id').eq('is_active', true);
+    if (branchResult.error || !branchResult.data.length) {
+      await supabase.from('products').delete().eq('id', data.id);
+      await supabase.storage.from('product-images').remove([uploadedImage.path]);
+      throw branchResult.error || new Error('No active branches are available for initial stock.');
+    }
+    const stockRows = branchResult.data.map((branch) => ({
+      product_id: data.id,
+      branch_id: branch.id,
+      name,
+      sku: `PRD-${data.id.slice(0, 8)}-${branch.id.slice(0, 4)}`,
+      unit: 'unit',
+      quantity: initialStock,
+      low_stock_threshold: 5,
+      unit_cost: Number(unitCost),
+    }));
+    const { error: stockError } = await supabase.from('inventory').insert(stockRows);
+    if (stockError) {
+      await supabase.from('products').delete().eq('id', data.id);
+      await supabase.storage.from('product-images').remove([uploadedImage.path]);
+      throw stockError;
+    }
+    setCatalogProducts((current) => [toProduct(data), ...current]);
+    await recordActivity('product.created', 'product', data.id, { name, category, price, unitCost }, branchId);
   };
   const deleteProduct = async (product) => {
-    if (supabase) {
-      const { error: inventoryError } = await supabase.from('inventory').delete().eq('product_id', product.id);
-      if (inventoryError) throw inventoryError;
-      const { error } = await supabase.from('products').delete().eq('id', product.id);
-      if (error) throw error;
-      const imagePath = product.imageUrl?.split('/storage/v1/object/public/product-images/')[1]?.split('?')[0];
-      if (imagePath) {
-        const { error: imageError } = await supabase.storage.from('product-images').remove([decodeURIComponent(imagePath)]);
-        if (imageError) console.warn('Product image cleanup failure:', imageError.message);
-      }
+    const { error: inventoryError } = await supabase.from('inventory').delete().eq('product_id', product.id);
+    if (inventoryError) throw inventoryError;
+    const { error } = await supabase.from('products').delete().eq('id', product.id);
+    if (error) throw error;
+    const imagePath = product.imageUrl?.split('/storage/v1/object/public/product-images/')[1]?.split('?')[0];
+    if (imagePath) {
+      const { error: imageError } = await supabase.storage.from('product-images').remove([decodeURIComponent(imagePath)]);
+      if (imageError) console.warn('Product image cleanup failure:', imageError.message);
     }
     setCatalogProducts((current) => current.filter((item) => item.id !== product.id));
     setPromotions((current) => current.map((promotion) => promotion.productId === product.id ? { ...promotion, productId: null } : promotion));
     await recordActivity('product.deleted', 'product', product.id, { name: product.name }, product.branch_id);
   };
   const createPromotion = async ({ title, description, productId, promoType, buyQuantity, getQuantity, discountValue, branchId }) => {
-    const promotion = { id: `demo-promotion-${Date.now()}`, title, description, productId: productId || null, promoType, buyQuantity, getQuantity, discountValue, branchIds: branchId ? [branchId] : [], is_active: true };
-    if (supabase) {
-      const { data, error } = await supabase.from('promotions').insert({
-        title,
-        description,
-        product_id: productId || null,
-        promo_type: promoType,
-        buy_quantity: buyQuantity,
-        get_quantity: getQuantity,
-        discount_value: discountValue,
-        branch_ids: branchId ? [branchId] : [],
-        is_active: true,
-      }).select().single();
-      if (error) throw error;
-      setPromotions((current) => [toPromotion(data), ...current]);
-      await recordActivity('promotion.created', 'promotion', data.id, { title, promoType, productId, branchId }, branchId);
-      return;
-    }
-    setPromotions((current) => [promotion, ...current]);
-    await recordActivity('promotion.created', 'promotion', promotion.id, { title, promoType, productId, branchId }, branchId);
+    const { data, error } = await supabase.from('promotions').insert({
+      title,
+      description,
+      product_id: productId || null,
+      promo_type: promoType,
+      buy_quantity: buyQuantity,
+      get_quantity: getQuantity,
+      discount_value: discountValue,
+      branch_ids: branchId ? [branchId] : [],
+      is_active: true,
+    }).select().single();
+    if (error) throw error;
+    setPromotions((current) => [toPromotion(data), ...current]);
+    await recordActivity('promotion.created', 'promotion', data.id, { title, promoType, productId, branchId }, branchId);
   };
   const deletePromotion = async (promotion) => {
-    if (supabase) {
-      const { error } = await supabase.from('promotions').delete().eq('id', promotion.id);
-      if (error) throw error;
-    }
+    const { error } = await supabase.from('promotions').delete().eq('id', promotion.id);
+    if (error) throw error;
     setPromotions((current) => current.filter((item) => item.id !== promotion.id));
     await recordActivity('promotion.deleted', 'promotion', promotion.id, { title: promotion.title }, null);
   };
   const createBranch = async (branch) => {
-    const created = supabase
-      ? await requestApi('/api/admin/branches', { method: 'POST', body: JSON.stringify(branch) })
-      : { ...branch, id: `demo-branch-${Date.now()}`, is_active: true };
+    const created = await requestApi('/api/admin/branches', { method: 'POST', body: JSON.stringify(branch) });
     setBranches((current) => [...current, created].sort((left, right) => left.name.localeCompare(right.name)));
     return created;
   };
   const toggleBranch = async (branch) => {
-    const updated = supabase
-      ? await requestApi(`/api/admin/branches/${branch.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !branch.is_active }) })
-      : { ...branch, is_active: !branch.is_active };
+    const updated = await requestApi(`/api/admin/branches/${branch.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !branch.is_active }) });
     setBranches((current) => current.map((item) => item.id === branch.id ? updated : item));
     return updated;
   };
   const saveLoyaltySettings = async (settings) => {
-    if (supabase) {
-      const { error } = await supabase.from('loyalty_settings').upsert({ id: 1, ...settings, updated_by: user.id, updated_at: new Date().toISOString() });
-      if (error) throw error;
-    }
+    const { error } = await supabase.from('loyalty_settings').upsert({ id: 1, ...settings, updated_by: user.id, updated_at: new Date().toISOString() });
+    if (error) throw error;
     await recordActivity('loyalty.rules_updated', 'loyalty_settings', '1', settings, null);
   };
   const redeemReward = async (rewardId) => requestApi('/api/loyalty/redeem', { method: 'POST', body: JSON.stringify({ rewardId }) });
@@ -765,17 +694,11 @@ function AppContent() {
     if (!cart.length) return;
     setCheckoutNotice('');
     setCheckoutError('');
-    if (supabase) {
-      let result;
-      try {
-        result = await requestApi('/api/pos/checkout', {
-          method: 'POST',
-          body: JSON.stringify({ branchId: activeBranchId || user.branchId, customerCode, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
-        });
-      } catch (error) {
-        setCheckoutError(error.message || 'Unable to complete checkout.');
-        return;
-      }
+    try {
+      const result = await requestApi('/api/pos/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ branchId: activeBranchId || user.branchId, customerCode, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
+      });
       setOrders((current) => [toClientOrder({
         ...result.order,
         order_items: result.items,
@@ -784,66 +707,31 @@ function AppContent() {
       setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} loyalty points earned.` : 'Sale completed.'}`);
       setCart([]);
       return result;
+    } catch (error) {
+      setCheckoutError(error.message || 'Unable to complete checkout.');
+      return;
     }
-    const preview = previewPromotion(cart, promotions, activeBranchId);
-    const orderId = `SC-DEMO-${Date.now()}`;
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    setOrders((current) => [{
-      id: orderId,
-      customer: customerCode || 'Walk-in',
-      branch_id: activeBranchId || user.branchId || branches[0]?.id || '',
-      items: preview.items.map((item) => `${item.name} × ${item.quantity}`).join(', '),
-      total: Math.max(0, subtotal - preview.discountTotal),
-      status: 'New',
-      channel: 'Counter',
-      created_at: new Date().toISOString(),
-      estimated_pickup_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-    }, ...current]);
-    setCheckoutNotice(`${preview.promotion?.title ? `${preview.promotion.title} applied. ` : ''}Sale completed.`);
-    setCart([]);
   };
   const placeOrder = async (pickupAt = null) => {
     if (!cart.length) return;
     setCheckoutNotice('');
     setCheckoutError('');
-    if (supabase) {
-      const branchId = activeBranchId || user.branchId || branches[0]?.id;
-      if (!branchId) return setCheckoutNotice('Choose an active branch before placing your order.');
-      try {
-        const result = await requestApi('/api/pos/checkout', {
-          method: 'POST',
-          body: JSON.stringify({ branchId, pickupAt, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
-        });
-        setOrders((current) => [toClientOrder({
-          ...result.order,
-          order_items: result.items,
-          promotions: { title: result.promotion?.title },
-        }, user), ...current]);
-        setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : 'Order placed.'}`);
-        setCart([]);
-        setCartOpen(false);
-      } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
-      return;
-    }
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const order = {
-      id: `SC-DEMO-${Date.now()}`,
-      customer: user.name,
-      customerId: user.id,
-      customerEmail: user.email,
-      branch_id: activeBranchId || user.branchId || branches[0]?.id || '',
-      items: cart.map((item) => `${item.name} × ${item.quantity}`).join(', '),
-      total: subtotal,
-      status: 'New',
-      channel: 'Online',
-      created_at: new Date().toISOString(),
-      scheduled_pickup_at: pickupAt,
-      estimated_pickup_at: pickupAt || new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-    };
-    setOrders((current) => [order, ...current]);
-    setCart([]);
-    setCartOpen(false);
-    Alert.alert('Order placed', 'Your pickup order is being prepared.');
+    const branchId = activeBranchId || user.branchId || branches[0]?.id;
+    if (!branchId) return setCheckoutNotice('Choose an active branch before placing your order.');
+    try {
+      const result = await requestApi('/api/pos/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ branchId, pickupAt, items: cart.map((item) => ({ productId: item.productId || item.id, quantity: item.quantity, customization: item.customization })) }),
+      });
+      setOrders((current) => [toClientOrder({
+        ...result.order,
+        order_items: result.items,
+        promotions: { title: result.promotion?.title },
+      }, user), ...current]);
+      setCheckoutNotice(`${result.promotion?.title ? `${result.promotion.title} applied. ` : ''}${result.pointsEarned ? `${result.pointsEarned} points earned.` : role === 'guest' ? 'Guest order placed. No loyalty points are earned on guest accounts.' : 'Order placed.'}`);
+      setCart([]);
+      setCartOpen(false);
+    } catch (orderError) { setCheckoutError(orderError.message || 'Unable to place order.'); }
   };
   const updateOrderStatus = async (orderId, status) => {
     const order = orders.find((current) => current.id === orderId);
@@ -853,38 +741,13 @@ function AppContent() {
       return;
     }
     try {
-      const updated = supabase
-        ? await requestApi(`/api/orders/${order.databaseId || order.id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: statusToApi[status] || status }),
-        })
-        : { status: statusToApi[status] || status };
+      const updated = await requestApi(`/api/orders/${order.databaseId || order.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: statusToApi[status] || status }),
+      });
       setOrders((current) => current.map((item) => item.id === orderId
         ? { ...item, status: orderStatusLabels[updated.status] || updated.status }
         : item));
-      if (!supabase && status === 'Completed') {
-        const completedAt = new Date().toISOString();
-        const branchId = order.branch_id || activeBranchId || user.branchId || '';
-        const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Branch';
-        const log = {
-          id: `demo-completion-${order.databaseId || order.id}`,
-          action: 'order.completed',
-          entity_type: 'order',
-          entity_id: order.id,
-          branch_id: branchId,
-          created_at: completedAt,
-          profiles: { full_name: user.name },
-          details: {
-            orderId: order.id,
-            customerName: order.customer || 'Walk-in',
-            branchName,
-            baristaName: user.name,
-            completionTimestamp: completedAt,
-            statusChangedTo: 'Finished',
-          },
-        };
-        setLocalActivityLogs((current) => [log, ...current.filter((entry) => entry.id !== log.id)]);
-      }
       if (status === 'Ready for pickup') {
         setNotifications((current) => [{
           id: `${orderId}-ready`,
@@ -900,17 +763,17 @@ function AppContent() {
     }
   };
   const dismissNotification = async (notificationId) => {
-    if (supabase) {
+    setNotificationActionError('');
+    try {
       const { error } = await supabase.from('notifications')
         .update({ read_at: new Date().toISOString() })
         .eq('id', notificationId)
         .eq('user_id', user.id);
-      if (error) {
-        Alert.alert('Unable to dismiss notification', error.message);
-        return;
-      }
+      if (error) throw error;
+      setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+    } catch (error) {
+      setNotificationActionError(`Unable to dismiss notification: ${error.message || 'Please try again.'}`);
     }
-    setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
   };
   const navigate = (nextPage) => {
     const allowedPage = config.pages.some(([id]) => id === nextPage) ? nextPage : config.initialPage;
@@ -925,25 +788,26 @@ function AppContent() {
           <Pressable style={styles.drawerBackdropPressable} onPress={() => setMenuOpen(false)} accessibilityLabel="Close navigation menu" />
         </Animated.View>}
         <Animated.View style={[styles.sidebar, isMobile && styles.sidebarMobile, isMobile && { width: drawerWidth, transform: [{ translateX: drawerPosition }] }]}>
-          <View style={styles.brand}><BrandLogo size={isMobile ? Math.min(44, Math.max(34, width * 0.11)) : Math.min(60, Math.max(44, width * 0.055))} /><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>LIPA BRANCH</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
+          <View style={styles.brand}><BrandLogo size={isMobile ? Math.min(44, Math.max(34, width * 0.11)) : Math.min(60, Math.max(44, width * 0.055))} /><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>{branchName}</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
           <Text style={styles.label}>{role === 'customer' ? 'Your coffee shop' : `${config.label} workspace`}</Text>
           <View style={styles.nav}>{config.pages.map(([id, label, icon]) => <Pressable key={id} onPress={() => navigate(id)} style={[styles.navButton, page === id && styles.navButtonActive]}><Text style={styles.navIcon}>{icon}</Text><Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text></Pressable>)}</View>
-          <View style={styles.sidebarFooter}><Text style={styles.store}>Lipa Branch · Lipa City</Text><Text style={styles.sidebarMuted}>Open today until 10:00 PM</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
+          <View style={styles.sidebarFooter}><Text style={styles.store}>{branchName}</Text><Text style={styles.sidebarMuted}>{branchLocation}</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
         </Animated.View>
         <View style={styles.main}>
           <PageBackground variant={role === 'customer' || role === 'guest' ? 'shop' : 'dashboard'}>
-          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>LIPA BRANCH</Text></View></View></View>}
+          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>{branchName}</Text></View></View></View>}
           <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><Text style={[styles.topbarTagline, (role === 'customer' || role === 'guest') && styles.topbarTaglineLight, isMobile && styles.topbarTaglineMobile]}>“A full circle of flavor &amp; comfort”</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
           <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
+            {notificationActionError ? <Text accessibilityRole="alert" style={styles.formError}>{notificationActionError}</Text> : null}
             {page === 'overview' && <AdminOverview summary={reportSummary} reportError={reportError} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
             {page === 'inventory' && <Inventory branchId={activeBranchId || user.branchId} isHeadAdmin={isHeadAdmin} notifications={isHeadAdmin ? notifications : []} onDismissNotification={dismissNotification} branches={branches} />}
             {page === 'products' && <AdminProducts products={catalogProducts} branches={branches} defaultBranchId={user.branchId || activeBranchId} isHeadAdmin={isHeadAdmin} onCreateProduct={createProduct} onDeleteProduct={deleteProduct} />}
             {page === 'promotions' && <Promotions promotions={promotions} products={catalogProducts.filter((product) => product.category !== 'Inventory')} branches={branches} defaultBranchId={user.branchId || activeBranchId} isHeadAdmin={isHeadAdmin} onCreatePromotion={createPromotion} onDeletePromotion={deletePromotion} />}
             {page === 'loyalty' && <LoyaltyAdmin onSave={saveLoyaltySettings} />}
-            {page === 'audit' && <AuditLogs branchId={isHeadAdmin ? null : user.branchId} demoLogs={localActivityLogs} />}
-            {page === 'team' && <TeamAccounts accounts={accounts} branches={branches} isHeadAdmin={isHeadAdmin} branchId={user.branchId || activeBranchId} onCreate={(account) => setAccounts((current) => [...current, account])} onToggleAccount={async (account) => {
-              const updated = supabase ? await requestApi(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !account.isActive }) }) : { ...account, isActive: !account.isActive };
+            {page === 'audit' && <AuditLogs branchId={isHeadAdmin ? null : user.branchId} />}
+            {page === 'team' && <TeamAccounts accounts={accounts} loading={accountsLoading} loadError={accountsLoadError} branches={branches} isHeadAdmin={isHeadAdmin} branchId={user.branchId || activeBranchId} onCreate={(account) => setAccounts((current) => [...current, account])} onToggleAccount={async (account) => {
+              const updated = await requestApi(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !account.isActive }) });
               setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, ...updated, isActive: updated.is_active ?? updated.isActive } : item));
             }} />}
             {page === 'pos' && <Pos visibleProducts={visibleProducts} promotions={promotions} branchId={activeBranchId || user.branchId} checkoutNotice={checkoutNotice} checkoutError={checkoutError} search={search} setSearch={setSearch} cart={cart} onAdd={addToCart} onPlaceOrder={placePosOrder} onChangeQuantity={(id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((item) => item.quantity > 0))} />}
@@ -1004,7 +868,28 @@ function PageBackground({ variant, children }) {
   </ImageBackground>;
 }
 
-function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
+function ServiceUnavailableScreen() {
+  return <ImageBackground source={require('./assets/cafe-bg.jpg')} resizeMode="cover" style={styles.authRoot} imageStyle={styles.authBackgroundImage}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.authBackgroundTint]} />
+    <SafeAreaView style={styles.authSafeArea}>
+      <View style={styles.authPage}>
+        <View style={styles.authCard}>
+          <View style={styles.authBrand}>
+            <BrandLogo size={64} />
+            <View style={styles.authBrandDetails}>
+              <Text style={styles.brandNameDark}>360 Degrees Specialty Cafe</Text>
+            </View>
+          </View>
+          <Text style={styles.eyebrow}>Account access</Text>
+          <Text style={styles.authTitle}>Service unavailable</Text>
+          <Text style={styles.authSubtitle}>The account service is not available in this build. Please try again later or contact support.</Text>
+        </View>
+      </View>
+    </SafeAreaView>
+  </ImageBackground>;
+}
+
+function AuthScreen({ authError, onLogin, onRegister, onGuest }) {
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [guestName, setGuestName] = useState('');
@@ -1027,15 +912,9 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       if (!name.trim()) return setError('Enter your full name.');
       if (!contactNumber.trim()) return setError('Enter a contact number.');
       if (password !== confirmPassword) return setError('Passwords do not match.');
-      if (accounts.some((account) => account.email === normalizedEmail)) return setError('An account with this email already exists.');
-      return onRegister({ id: `customer-${Date.now()}`, name: name.trim(), email: normalizedEmail, password, role: 'customer', contactNumber: contactNumber.trim(), customerCode: `CS-${new Date().getFullYear()}-${String(accounts.filter((account) => account.role === 'customer').length + 1).padStart(4, '0')}` }).catch((submitError) => setError(submitError.message));
+      return onRegister({ name: name.trim(), email: normalizedEmail, password, contactNumber: contactNumber.trim() }).catch((submitError) => setError(submitError.message));
     }
-    if (!accounts.length) {
-      return onLogin({ email: normalizedEmail, password }).catch((submitError) => setError(submitError.message));
-    }
-    const account = accounts.find((item) => item.email === normalizedEmail && item.password === password);
-    if (!account) return setError('Email or password is incorrect.');
-    return onLogin(account).catch((submitError) => setError(submitError.message));
+    return onLogin({ email: normalizedEmail, password }).catch((submitError) => setError(submitError.message));
   };
 
   const switchMode = () => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); };
@@ -1048,8 +927,7 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
       .catch((guestError) => setError(guestError.message || 'Unable to start a guest account.'))
       .finally(() => setGuestSubmitting(false));
   };
-  return <ImageBackground source={require('./assets/cafe-bg.jpg')} resizeMode="cover" style={styles.authRoot} imageStyle={styles.authBackgroundImage}>
-    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.authBackgroundTint]} />
+  return <PageBackground variant="shop">
     <SafeAreaView style={styles.authSafeArea}>
     <KeyboardAvoidingView style={styles.authKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView contentContainerStyle={[styles.authPage, width < 480 && styles.authPageCompact]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
@@ -1058,7 +936,6 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
         <BrandLogo size={width < 360 ? 56 : width < 480 ? 64 : 76} />
         <View style={styles.authBrandDetails}>
             <Text style={styles.brandNameDark}>360 Degrees Specialty Cafe</Text>
-            <Text style={styles.branchDark}>LIPA BRANCH</Text>
           </View>
         </View>
         {mode !== 'guest' && <View style={styles.authTabs}>
@@ -1073,11 +950,16 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
         <Text style={[styles.authTitle, width < 480 && styles.authTitleCompact]}>{mode === 'login' ? 'Sign in to your workspace' : mode === 'guest' ? 'Who is picking up?' : 'Create your account'}</Text>
         <Text style={[styles.authSubtitle, width < 480 && styles.authSubtitleCompact]}>{mode === 'login' ? 'Use your account to access the workspace assigned to you.' : mode === 'guest' ? 'Enter your name so the barista can identify your order.' : 'New accounts start as customer accounts.'}</Text>
         {mode === 'guest' && <TextInput value={guestName} onChangeText={setGuestName} placeholder="Your name *" placeholderTextColor="#82766e" autoCapitalize="words" autoComplete="name" returnKeyType="done" onSubmitEditing={startGuestSession} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Full name *" placeholderTextColor="#82766e" autoCapitalize="words" style={styles.authInput} />}
-        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#82766e" autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={styles.authInput} />}
-        {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" placeholderTextColor="#82766e" keyboardType="phone-pad" style={styles.authInput} />}
-        {mode !== 'guest' && <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} />}
-        {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />}
+        {mode === 'register' && <Text style={styles.authFieldLabel}>Full name</Text>}
+        {mode === 'register' && <TextInput value={name} onChangeText={setName} placeholder="Enter your full name" placeholderTextColor="#594a41" autoCapitalize="words" style={[styles.authInput, styles.authInputEmphasized]} />}
+        {mode === 'register' && <Text style={styles.authFieldLabel}>Email address</Text>}
+        {mode !== 'guest' && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor={mode === 'register' ? '#594a41' : '#82766e'} autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} style={[styles.authInput, mode === 'register' && styles.authInputEmphasized]} />}
+        {mode === 'register' && <Text style={styles.authFieldLabel}>Contact number</Text>}
+        {mode === 'register' && <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Enter your contact number" placeholderTextColor="#594a41" keyboardType="phone-pad" style={[styles.authInput, styles.authInputEmphasized]} />}
+        {mode === 'register' && <Text style={styles.authFieldLabel}>Password</Text>}
+        {mode !== 'guest' && <PasswordInput inputRef={passwordRef} value={password} onChangeText={setPassword} placeholder="Password (8+ characters)" visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} returnKeyType={mode === 'login' ? 'go' : 'next'} onSubmitEditing={mode === 'login' ? submit : undefined} placeholderTextColor={mode === 'register' ? '#594a41' : '#82766e'} wrapperStyle={mode === 'register' && styles.passwordInputWrapperEmphasized} />}
+        {mode === 'register' && <Text style={styles.authFieldLabel}>Confirm password</Text>}
+        {mode === 'register' && <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Re-enter your password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} placeholderTextColor="#594a41" wrapperStyle={styles.passwordInputWrapperEmphasized} />}
         {authError ? <Text style={styles.formError}>{authError}</Text> : null}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
         {mode !== 'guest' ? <Pressable style={styles.authButton} onPress={submit}>
@@ -1090,19 +972,18 @@ function AuthScreen({ accounts, authError, onLogin, onRegister, onGuest }) {
           <Text style={styles.guestButtonText}>Continue as Guest Account</Text>
           <Text style={styles.guestHint}>Temporary access · no loyalty points</Text>
         </Pressable>}
-        {mode === 'login' && accounts.length > 0 && <Text style={styles.demoHint}>Demo: admin@360degrees.cafe / admin123</Text>}
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
     </SafeAreaView>
-  </ImageBackground>;
+  </PageBackground>;
 }
 
-function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing }) {
-  return <View style={styles.passwordInputWrapper}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#82766e" secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
+function PasswordInput({ value, onChangeText, placeholder, visible, onToggle, inputRef, returnKeyType, onSubmitEditing, placeholderTextColor = '#82766e', wrapperStyle }) {
+  return <View style={[styles.passwordInputWrapper, wrapperStyle]}><TextInput ref={inputRef} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={placeholderTextColor} secureTextEntry={!visible} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing} style={styles.passwordInput} /><Pressable onPress={onToggle} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'}><Text style={styles.passwordToggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable></View>;
 }
 
-function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranchId, onCreate, onToggleAccount }) {
+function TeamAccounts({ accounts, loading, loadError, branches, isHeadAdmin, branchId: assignedBranchId, onCreate, onToggleAccount }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1113,6 +994,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [creating, setCreating] = useState(false);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const roles = isHeadAdmin ? ['branch_admin', 'staff', 'customer'] : ['staff'];
@@ -1128,41 +1010,30 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
     if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) return setError('This email is already assigned to an account.');
     setCreating(true);
     setError('');
+    setNotice('');
     try {
-      let account = {
-        id: `${accountRole}-${Date.now()}`,
-        name: name.trim(),
-        email: normalizedEmail,
-        password,
-        role: accountRole,
-        branchId: accountRole === 'customer' ? null : (isHeadAdmin ? branchId : assignedBranchId),
-        contactNumber: contactNumber.trim(),
-        address: address.trim(),
+      const result = await requestApi('/api/admin/accounts', {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: name.trim(),
+          email: normalizedEmail,
+          password,
+          role: accountRole,
+          branchId: accountRole === 'customer' ? null : (isHeadAdmin ? branchId : assignedBranchId),
+          contactNumber: contactNumber.trim(),
+          address: address.trim(),
+        }),
+      });
+      const account = {
+        id: result.id,
+        name: result.full_name,
+        email: result.email,
+        role: result.role,
+        branchId: result.branch_id,
+        isActive: result.is_active,
+        contactNumber: result.contact_number,
+        address: result.address,
       };
-      if (supabase) {
-        const result = await requestApi('/api/admin/accounts', {
-          method: 'POST',
-          body: JSON.stringify({
-            fullName: account.name,
-            email: account.email,
-            password: account.password,
-            role: account.role,
-            branchId: account.branchId,
-            contactNumber: account.contactNumber,
-            address: account.address,
-          }),
-        });
-        account = {
-          id: result.id,
-          name: result.full_name,
-          email: result.email,
-          role: result.role,
-          branchId: result.branch_id,
-          isActive: result.is_active,
-          contactNumber: result.contact_number,
-          address: result.address,
-        };
-      }
       onCreate(account);
       setName('');
       setEmail('');
@@ -1170,7 +1041,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
       setShowTemporaryPassword(false);
       setContactNumber('');
       setAddress('');
-      Alert.alert('Account created', `The ${roleLabel(accountRole)} account can now sign in with this email and password.`);
+      setNotice(`The ${roleLabel(accountRole)} account can now sign in with this email and password.`);
     } catch (submitError) {
       setError(submitError.message || 'Unable to create account.');
     } finally {
@@ -1222,12 +1093,15 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
       <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />
       <TextInput value={address} onChangeText={setAddress} placeholder="Complete address *" multiline style={[styles.authInput, styles.addressInput]} />
       {error ? <Text style={styles.formError}>{error}</Text> : null}
+      {notice ? <Text accessibilityLiveRegion="polite" style={styles.successText}>{notice}</Text> : null}
       <Pressable disabled={creating} style={[styles.buttonDark, creating && styles.disabled]} onPress={createAccount}>
         <Text style={styles.buttonText}>Create an Account</Text>
       </Pressable>
     </View>
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Registered accounts</Text>
+      {loadError ? <Text style={styles.formError}>Unable to load registered accounts: {loadError}</Text> : null}
+      {loading ? <Text style={styles.subtitle}>Loading accounts...</Text> : null}
       {accounts.map((account) => <View style={styles.accountRow} key={account.id}>
         <View style={styles.flex}>
           <Text style={styles.cardTitle}>{account.name}</Text>
@@ -1237,6 +1111,7 @@ function TeamAccounts({ accounts, branches, isHeadAdmin, branchId: assignedBranc
         <View style={styles.flex}><Text style={styles.pill}>{roleLabel(account.role)}</Text><Text style={styles.subtitle}>{branches.find((branch) => branch.id === (account.branchId || account.branch_id))?.name || (account.role === 'customer' ? 'Customer' : '')}</Text></View>
         {onToggleAccount && !['admin', 'head_admin', 'customer'].includes(account.role) && <Pressable style={styles.deleteButton} onPress={() => onToggleAccount(account)}><Text style={styles.deleteButtonText}>{account.isActive === false || account.is_active === false ? 'Activate' : 'Deactivate'}</Text></Pressable>}
       </View>)}
+      {!loading && !loadError && !accounts.length ? <Text style={styles.subtitle}>No accounts have been registered yet.</Text> : null}
     </View>
   </>;
 }
@@ -1249,16 +1124,18 @@ function Stat({ label, value, note }) {
 }
 function AdminOverview({ summary, reportError, onNavigate, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
   const topProduct = summary?.topProducts?.[0];
+  const pendingValue = reportError ? '—' : 'Loading…';
+  const pendingNote = reportError ? 'Live data unavailable' : 'Loading live data';
   return <>
     <Header eyebrow="Operations" title="Overview" subtitle="Live operating metrics and sales reports for your selected branch scope." />
     <View style={styles.stats}>
-      <Stat label="Sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} />
-      <Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Across selected branches" />
-      <Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note={`Cost of goods ${money(summary?.costOfGoods || 0)}`} />
-      <Stat label="Low-stock items" value={String(summary?.lowStock || 0)} note={`${summary?.totalStock || 0} units in stock`} />
+      <Stat label="Sales" value={summary ? money(summary.sales || 0) : pendingValue} note={summary ? `${summary.orders || 0} orders` : pendingNote} />
+      <Stat label="Average order" value={summary ? money(summary.averageOrder || 0) : pendingValue} note={summary ? 'Across selected branches' : pendingNote} />
+      <Stat label="Gross profit" value={summary ? money(summary.grossProfit || 0) : pendingValue} note={summary ? `Cost of goods ${money(summary.costOfGoods || 0)}` : pendingNote} />
+      <Stat label="Low-stock items" value={summary ? String(summary.lowStock || 0) : pendingValue} note={summary ? `${summary.totalStock || 0} units in stock` : pendingNote} />
       {isHeadAdmin && <>
-        <Stat label="Registered users" value={String(summary?.users || 0)} note="All branches · excludes guests" />
-        <Stat label="Top-selling product" value={topProduct?.name || 'No sales yet'} note={topProduct ? `${money(topProduct.sales)} in sales` : 'No product sales recorded'} />
+        <Stat label="Registered users" value={summary ? String(summary.users || 0) : pendingValue} note={summary ? 'All branches · excludes guests' : pendingNote} />
+        <Stat label="Top-selling product" value={summary ? topProduct?.name || 'No sales yet' : pendingValue} note={summary ? topProduct ? `${money(topProduct.sales)} in sales` : 'No product sales recorded' : pendingNote} />
       </>}
     </View>
     {reportError ? <View style={styles.notification}><Text style={styles.notificationTitle}>Analytics unavailable</Text><Text style={styles.subtitle}>{reportError}</Text></View> : null}
@@ -1363,8 +1240,7 @@ function Branches({ branches, selectedBranchId, onSelectBranch, onCreateBranch, 
   const [address, setAddress] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [canManage, setCanManage] = useState(false);
-  useEffect(() => { setCanManage(Boolean(supabase) ? true : true); }, []);
+  const canManage = true;
   const create = async () => {
     if (!name.trim() || !city.trim()) return setError('Enter the branch name and city.');
     setSaving(true);
@@ -1414,15 +1290,10 @@ function BranchPicker({ branches, selectedBranchId, onSelectBranch }) {
   </>;
 }
 
-function AuditLogs({ branchId, demoLogs }) {
+function AuditLogs({ branchId }) {
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!supabase) {
-      setLogs(demoLogs.filter((entry) => !branchId || entry.branch_id === branchId)
-        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()));
-      return;
-    }
     let active = true;
     const refreshLogs = async () => {
       try {
@@ -1447,10 +1318,9 @@ function AuditLogs({ branchId, demoLogs }) {
       clearInterval(timer);
       supabase.removeChannel(channel).catch((error) => console.error('Audit subscription cleanup failure:', error.message));
     };
-  }, [branchId, demoLogs]);
+  }, [branchId]);
   return <>
     <Header eyebrow="Administrative oversight" title="Activity log" subtitle="Recent account, branch, inventory, POS, and loyalty actions." />
-    {!supabase && <DemoModeNotice message="Activity in demo mode is only stored in this app session. It is not saved to the shared database." />}
     <View style={styles.card}>{error ? <Text style={styles.formError}>{error}</Text> : null}
       {logs.length ? logs.map((entry) => <View style={styles.accountRow} key={entry.id}>
         <View style={styles.flex}>
@@ -1517,11 +1387,9 @@ function LoyaltyAdmin({ onSave }) {
   };
   const addReward = async () => {
     if (!rewardName.trim() || Number(rewardPoints) < 1) return setError('Enter a reward name and point threshold.');
-    if (supabase) {
-      const { data, error: insertError } = await supabase.from('rewards').insert({ name: rewardName.trim(), points_required: Number(rewardPoints) }).select().single();
-      if (insertError) return setError(insertError.message);
-      setRewards((current) => [...current, data]);
-    } else setRewards((current) => [...current, { id: `${Date.now()}`, name: rewardName.trim(), points_required: Number(rewardPoints), is_active: true }]);
+    const { data, error: insertError } = await supabase.from('rewards').insert({ name: rewardName.trim(), points_required: Number(rewardPoints) }).select().single();
+    if (insertError) return setError(insertError.message);
+    setRewards((current) => [...current, data]);
     setRewardName(''); setRewardPoints(''); setNotice('Reward added.');
   };
   return <>
@@ -1561,10 +1429,6 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
   const lowStockNotifications = notifications.filter((notification) => notification.title === 'Low stock alert');
   const reload = useCallback(async () => {
     const requestId = ++reloadRequestId.current;
-    if (!supabase) {
-      setItems(products.filter((item) => item.category === 'Inventory').map((item) => ({ id: String(item.id), name: item.name, sku: `INV-${item.id}`, quantity: item.stock, low_stock_threshold: 10, unit_cost: 0, branch_id: branchId || 'demo-lipa' })));
-      setTransfers([]); setMovements([]); setLoading(false); return;
-    }
     try {
       const [stock, transferRows, movementRows] = await Promise.all([
         requestApi(`/api/inventory${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`),
@@ -1618,8 +1482,7 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
     if (transferQuantity > item.quantity) return setError(`Only ${item.quantity} units are available at the source branch.`);
     setSaving(true); setError(''); setNotice('');
     try {
-      if (supabase) await requestApi('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({ fromBranchId: item.branch_id, toBranchId, items: [{ inventoryId: item.id, quantity: transferQuantity }] }) });
-      else setTransfers((current) => [{ id: `demo-transfer-${Date.now()}`, from_branch_id: item.branch_id, to_branch_id: toBranchId, status: isHeadAdmin ? 'completed' : 'requested', inventory_transfer_items: [{ inventory_id: item.id, quantity: transferQuantity }] }, ...current]);
+      await requestApi('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({ fromBranchId: item.branch_id, toBranchId, items: [{ inventoryId: item.id, quantity: transferQuantity }] }) });
       setNotice(isHeadAdmin ? 'Stock sent to the destination branch.' : 'Transfer request submitted for head-admin approval.');
       await reload();
     } catch (requestError) { setError(requestError.message || 'Unable to request transfer.'); }
@@ -1628,8 +1491,7 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
   const reviewTransfer = async (transferId, status) => {
     setError(''); setNotice('');
     try {
-      if (supabase) await requestApi(`/api/inventory/transfers/${transferId}/review`, { method: 'PATCH', body: JSON.stringify({ status }) });
-      else setTransfers((current) => current.map((transfer) => transfer.id === transferId ? { ...transfer, status: status === 'approved' ? 'completed' : 'rejected' } : transfer));
+      await requestApi(`/api/inventory/transfers/${transferId}/review`, { method: 'PATCH', body: JSON.stringify({ status }) });
       setNotice(`Transfer ${status}.`);
       await reload();
     } catch (reviewError) { setError(reviewError.message || 'Unable to review transfer.'); }
@@ -1640,10 +1502,8 @@ function Inventory({ branchId, isHeadAdmin, notifications, onDismissNotification
     setError(''); setNotice('');
     setItems((current) => current.map((stock) => stock.id === item.id ? { ...stock, quantity: nextQuantity } : stock));
     try {
-      if (supabase) {
-        await requestApi(`/api/inventory/${item.id}/adjust`, { method: 'POST', body: JSON.stringify({ delta }) });
-        void reload();
-      }
+      await requestApi(`/api/inventory/${item.id}/adjust`, { method: 'POST', body: JSON.stringify({ delta }) });
+      void reload();
       setNotice(`${item.name} stock ${delta > 0 ? 'received' : 'adjusted'}.`);
     } catch (adjustError) {
       setItems((current) => current.map((stock) => stock.id === item.id ? { ...stock, quantity: stock.quantity - delta } : stock));
@@ -2005,12 +1865,7 @@ function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutEr
   const lookupCustomer = async (code = customerCode) => {
     if (!code.trim()) { setCustomerInfo(null); setCustomerLookupError(''); return; }
     try {
-      const info = supabase
-        ? await requestApi(`/api/pos/customers/${encodeURIComponent(code.trim())}`)
-        : (() => {
-          const demo = demoAccounts.find((account) => account.customerCode === code.trim());
-          return demo ? { full_name: demo.name, customer_code: demo.customerCode, reward_points: 0 } : null;
-        })();
+      const info = await requestApi(`/api/pos/customers/${encodeURIComponent(code.trim())}`);
       if (!info) throw new Error('Customer ID not found.');
       setCustomerInfo(info); setCustomerLookupError('');
     } catch (lookupError) { setCustomerInfo(null); setCustomerLookupError(lookupError.message || 'Customer ID not found.'); }
@@ -2033,10 +1888,6 @@ function Pos({ visibleProducts, promotions, branchId, checkoutNotice, checkoutEr
     if (/^CS-/i.test(code)) {
       setCustomerCode(code);
       await lookupCustomer(code);
-      return;
-    }
-    if (!supabase) {
-      setScanError('Reward code verification requires a connected account.');
       return;
     }
     try {
@@ -2137,7 +1988,6 @@ function Queue({ orders, onUpdateStatus, loadError, statusError }) {
   }, []);
   return <>
     <Header eyebrow="Service choreography" title="Order queue" subtitle="Tap a customer name to expand their orders. Orders are sorted by pickup time." />
-    {!supabase && <DemoModeNotice message="Demo mode: orders are not shared with other devices. Configure the client's Supabase credentials and API URL to use the live queue." />}
     {loadError ? <Text style={styles.formError}>Unable to sync orders: {loadError}</Text> : null}
     {statusError ? <Text style={styles.formError}>Unable to update order: {statusError}</Text> : null}
     {upcomingOrders.length > 0 && <View style={styles.card}><Text style={styles.cardTitle}>Upcoming pickups</Text>{upcomingOrders.slice(0, 8).map((order) => <Text key={`pickup-${order.id}`} style={styles.subtitle}>{pickupLabel(order) || 'Pickup time pending'} · #{order.id} · {order.customer}</Text>)}</View>}
@@ -2175,15 +2025,13 @@ function Queue({ orders, onUpdateStatus, loadError, statusError }) {
     }) : <Text style={styles.subtitle}>No orders are waiting in the queue.</Text>}
   </>;
 }
-function DemoModeNotice({ message }) {
-  return <View style={styles.notification}><Text style={styles.notificationTitle}>Demo mode</Text><Text style={styles.subtitle}>{message}</Text></View>;
-}
 function Receipts({ orders }) {
   return <><Header eyebrow="Service history" title="Receipts" subtitle="Recent counter and online orders." />{orders.map((order) => <View style={styles.listCard} key={order.id}><View style={styles.flex}><Text style={styles.cardTitle}>#{order.id}</Text><Text style={styles.subtitle}>{order.customer} · {order.items}</Text>{order.promotionTitle && <Text style={styles.successText}>Promotion: {order.promotionTitle}</Text>}{Number(order.discount_total || order.discountTotal || 0) > 0 && <Text style={styles.warning}>Discount: -{money(order.discount_total || order.discountTotal)}</Text>}</View><Text style={styles.price}>{money(order.total)}</Text></View>)}</>;
 }
 function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAdmin }) {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId);
+  const pendingValue = '—';
   return <>
     <Header eyebrow="Performance analytics" title="Sales reports" subtitle="Sales, inventory valuation, costing, and customer activity." />
     {isHeadAdmin && <View style={styles.card}>
@@ -2198,13 +2046,13 @@ function Reports({ summary, branches, selectedBranchId, onSelectBranch, isHeadAd
       </View>
     </View>}
     <View style={styles.stats}>
-      <Stat label="Gross sales" value={money(summary?.sales || 0)} note={`${summary?.orders || 0} orders`} />
-      <Stat label="Average order" value={money(summary?.averageOrder || 0)} note="Per completed sale" />
-      <Stat label="Customers" value={String(summary?.customers || 0)} note="Unique customers" />
-      <Stat label="Low stock" value={String(summary?.lowStock || 0)} note="Threshold alerts" />
-      <Stat label="Inventory value" value={money(summary?.inventoryValue || 0)} note="At recorded unit cost" />
-      <Stat label="Cost of goods" value={money(summary?.costOfGoods || 0)} note="Based on product cost" />
-      <Stat label="Gross profit" value={money(summary?.grossProfit || 0)} note="Sales less cost of goods" />
+      <Stat label="Gross sales" value={summary ? money(summary.sales || 0) : pendingValue} note={`${summary?.orders || 0} orders`} />
+      <Stat label="Average order" value={summary ? money(summary.averageOrder || 0) : pendingValue} note="Per completed sale" />
+      <Stat label="Customers" value={summary ? String(summary.customers || 0) : pendingValue} note="Unique customers" />
+      <Stat label="Low stock" value={summary ? String(summary.lowStock || 0) : pendingValue} note="Threshold alerts" />
+      <Stat label="Inventory value" value={summary ? money(summary.inventoryValue || 0) : pendingValue} note="At recorded unit cost" />
+      <Stat label="Cost of goods" value={summary ? money(summary.costOfGoods || 0) : pendingValue} note="Based on product cost" />
+      <Stat label="Gross profit" value={summary ? money(summary.grossProfit || 0) : pendingValue} note="Sales less cost of goods" />
     </View>
   </>;
 }
@@ -2219,40 +2067,35 @@ function CustomerHome({ products, promotions, branchId, branches, checkoutNotice
     && (!promotion.starts_at || new Date(promotion.starts_at).getTime() <= currentTime)
     && (!promotion.ends_at || new Date(promotion.ends_at).getTime() > currentTime));
   const promotedProduct = activePromotion && products.find((product) => product.id === activePromotion.productId);
-  const promoKey = `${user.id}:${activePromotion?.id ?? activePromotion?.title ?? 'default-ube-promo'}`;
+  const promoKey = activePromotion ? `${user.id}:${activePromotion.id}` : '';
   const promoDismissed = dismissedPromoKey === promoKey;
   const customerProducts = products.filter((product) => product.category !== 'Inventory');
-  const fallbackPromotionProduct = products.find((product) => product.name === 'Ube Cloud Latte') || customerProducts[0];
-  const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Lipa Branch';
+  const branchName = branches.find((branch) => branch.id === branchId)?.name;
   return <>
-    <Header eyebrow={`360 Degrees Specialty Cafe · ${branchName}`} title={`Good morning, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
+    <Header eyebrow={`360 Degrees Specialty Cafe${branchName ? ` · ${branchName}` : ''}`} title={`Welcome, ${user.name}.`} subtitle="Your neighborhood coffee, ready when you are." />
     {checkoutNotice ? <Text style={styles.successText}>{checkoutNotice}</Text> : null}
     {checkoutError ? <Text style={styles.formError}>{checkoutError}</Text> : null}
     {user.customerCode && <View style={styles.customerIdCard}><QRCode value={user.customerCode} size={108} /><View style={styles.flex}><Text style={styles.eyebrow}>{user.role === 'guest' ? 'Guest ID' : 'Customer ID'}</Text><Text style={styles.customerId}>{user.customerCode}</Text><Text style={styles.subtitle}>{user.role === 'guest' ? 'Temporary account · guest orders do not earn or redeem loyalty points.' : 'Show this code at checkout to earn points.'}</Text>{user.role === 'guest' && user.guestExpiresAt ? <Text style={styles.guestHint}>Expires {new Date(user.guestExpiresAt).toLocaleString()}</Text> : null}</View></View>}
     {(readyOrder || readyNotification) && <View style={styles.notification}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>Your order is ready for pickup</Text>{readyNotification && <Pressable onPress={() => onDismissNotification(readyNotification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable>}</View><Text style={styles.subtitle}>{readyNotification?.message || `Order #${readyOrder.id} is ready at ${branchName}.`}</Text></View>}
     {activeOrder && <View style={styles.card}><Text style={styles.cardTitle}>Order tracking · #{activeOrder.id}</Text><Text style={styles.pill}>{activeOrder.status}</Text>{pickupLabel(activeOrder) ? <Text style={styles.successText}>{pickupLabel(activeOrder)}</Text> : null}<Text style={styles.subtitle}>{activeOrder.items}</Text><Pressable style={styles.buttonSecondary} onPress={() => onNavigate('orders')}><Text>View order details</Text></Pressable></View>}
     {notifications.filter((notification) => !notification.title?.toLowerCase().includes('ready')).slice(0, 3).map((notification) => <View style={styles.notification} key={notification.id}><View style={styles.notificationHeader}><Text style={styles.notificationTitle}>{notification.title}</Text><Pressable onPress={() => onDismissNotification(notification.id)}><Text style={styles.dismissText}>Dismiss</Text></Pressable></View><Text style={styles.subtitle}>{notification.message}</Text></View>)}
-    {!promoDismissed && <View style={styles.promo}>
+    {activePromotion && !promoDismissed && <View style={styles.promo}>
       <Pressable accessibilityRole="button" accessibilityLabel="Dismiss promotion" onPress={() => onDismissPromotion(promoKey)} style={styles.promoDismissButton}>
         <Text style={styles.promoDismissText}>×</Text>
       </Pressable>
-      <Text style={styles.eyebrow}>{activePromotion ? 'Featured promotion' : `October special · from ${money(215)}`}</Text>
-      <Text style={styles.promoTitle}>{activePromotion?.title || 'Ube cloud, made for slow afternoons.'}</Text>
-      <Text style={styles.subtitle}>{activePromotion?.description || 'Velvety ube, local espresso, and a sea-salt cream cap.'}</Text>
-      {activePromotion && promotedProduct && <Text style={styles.promoPrice}>{promotedProduct.name} · {money(promotedProduct.price)}</Text>}
+      <Text style={styles.eyebrow}>Featured promotion</Text>
+      <Text style={styles.promoTitle}>{activePromotion.title}</Text>
+      {activePromotion.description ? <Text style={styles.subtitle}>{activePromotion.description}</Text> : null}
+      {promotedProduct && <Text style={styles.promoPrice}>{promotedProduct.name} · {money(promotedProduct.price)}</Text>}
       <Pressable style={styles.button} onPress={() => {
-        if (activePromotion) {
-          promotedProduct ? onAdd(promotedProduct) : onNavigate('menu');
-        } else {
-          onAdd(fallbackPromotionProduct);
-        }
+        promotedProduct ? onAdd(promotedProduct) : onNavigate('menu');
       }}>
-        <Text style={styles.buttonText}>{activePromotion ? promotedProduct ? `Order ${promotedProduct.name}` : 'See menu' : 'Order Ube Cloud Latte'}</Text>
+        <Text style={styles.buttonText}>{promotedProduct ? `Order ${promotedProduct.name}` : 'See menu'}</Text>
       </Pressable>
     </View>}
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Picked for you</Text>
-      {customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>)}
+      {customerProducts.length ? customerProducts.slice(0, 3).map((product) => <Pressable style={styles.listRow} key={product.id} onPress={() => onAdd(product)}><Text>{product.emoji} {product.name}</Text><Text style={styles.price}>{money(product.price)}</Text></Pressable>) : <Text style={styles.subtitle}>Menu items are currently unavailable.</Text>}
       <Pressable style={styles.buttonSecondary} onPress={() => onNavigate('menu')}><Text>See menu</Text></Pressable>
     </View>
   </>;
@@ -2337,6 +2180,8 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [profileNotice, setProfileNotice] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
@@ -2345,9 +2190,10 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
     if (!contactNumber.trim()) return setProfileError('Enter a contact number.');
     setSavingProfile(true);
     setProfileError('');
+    setProfileNotice('');
     try {
       await onSaveProfile({ fullName: name.trim(), contactNumber: contactNumber.trim(), address: address.trim() });
-      Alert.alert('Account updated', 'Your account details have been saved.');
+      setProfileNotice('Your account details have been saved.');
     } catch (saveError) {
       setProfileError(saveError.message || 'Unable to save account details.');
     } finally {
@@ -2360,11 +2206,12 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
     if (newPassword !== confirmPassword) return setPasswordError('Passwords do not match.');
     setSavingPassword(true);
     setPasswordError('');
+    setPasswordNotice('');
     try {
       await onChangePassword(newPassword);
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Password changed', 'Your password has been updated.');
+      setPasswordNotice('Your password has been updated.');
     } catch (saveError) {
       setPasswordError(saveError.message || 'Unable to change password.');
     } finally {
@@ -2381,6 +2228,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
       <TextInput value={contactNumber} onChangeText={setContactNumber} placeholder="Contact number *" keyboardType="phone-pad" style={styles.authInput} />
       <TextInput value={address} onChangeText={setAddress} placeholder="Address" multiline style={[styles.authInput, styles.addressInput]} />
       {profileError ? <Text style={styles.formError}>{profileError}</Text> : null}
+      {profileNotice ? <Text accessibilityLiveRegion="polite" style={styles.successText}>{profileNotice}</Text> : null}
       <Pressable disabled={savingProfile} style={[styles.buttonDark, savingProfile && styles.disabled]} onPress={saveProfile}>
         <Text style={styles.buttonText}>{savingProfile ? 'Saving...' : 'Save profile'}</Text>
       </Pressable>
@@ -2390,6 +2238,7 @@ function ManageAccount({ user, onSaveProfile, onChangePassword }) {
       <PasswordInput value={newPassword} onChangeText={setNewPassword} placeholder="New password (8+ characters)" visible={showNewPassword} onToggle={() => setShowNewPassword((visible) => !visible)} />
       <PasswordInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm new password" visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((visible) => !visible)} />
       {passwordError ? <Text style={styles.formError}>{passwordError}</Text> : null}
+      {passwordNotice ? <Text accessibilityLiveRegion="polite" style={styles.successText}>{passwordNotice}</Text> : null}
       <Pressable disabled={savingPassword} style={[styles.buttonDark, savingPassword && styles.disabled]} onPress={savePassword}>
         <Text style={styles.buttonText}>{savingPassword ? 'Saving...' : 'Update password'}</Text>
       </Pressable>
@@ -2418,12 +2267,13 @@ const baseStyles = StyleSheet.create({
   authTabText: { color: '#82766e', fontSize: 13, fontWeight: '700' },
   authTabTextActive: { color: '#fff' },
   brandNameDark: { color: '#30251f', fontFamily: 'Georgia', fontSize: 16, maxWidth: 180 },
-  branchDark: { color: '#82766e', fontSize: 9, letterSpacing: 2, marginTop: 4 },
   authTitle: { color: '#30251f', fontFamily: 'Georgia', fontSize: 30, marginTop: 7, marginBottom: 8 },
   authTitleCompact: { fontSize: 26 },
   authSubtitle: { color: '#82766e', fontSize: 13, lineHeight: 20, marginBottom: 20 },
   authSubtitleCompact: { marginBottom: 14 },
   authInput: { minHeight: 48, color: '#30251f', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, paddingHorizontal: 14, marginBottom: 12, fontSize: 14 },
+  authFieldLabel: { color: '#4b3b32', fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  authInputEmphasized: { backgroundColor: '#fffefa', borderColor: '#8b776a', borderWidth: 1.5 },
   loyaltyInputWrapper: { position: 'relative', marginBottom: 12 },
   loyaltyRuleInput: { minHeight: 62, marginBottom: 0, paddingTop: 8, paddingBottom: 23, textAlignVertical: 'top' },
   loyaltyInputDescription: { position: 'absolute', left: 14, right: 14, bottom: 7, color: '#82766e', fontSize: 11 },
@@ -2441,6 +2291,7 @@ const baseStyles = StyleSheet.create({
   fieldRow: { flexDirection: 'row', gap: 10 },
   fieldHalf: { flex: 1 },
   passwordInputWrapper: { minHeight: 48, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e9e0d7', borderRadius: 9, marginBottom: 12 },
+  passwordInputWrapperEmphasized: { backgroundColor: '#fffefa', borderColor: '#8b776a', borderWidth: 1.5 },
   passwordInput: { flex: 1, minHeight: 46, color: '#30251f', paddingHorizontal: 14, fontSize: 14 },
   passwordToggle: { paddingHorizontal: 14, paddingVertical: 13 },
   passwordToggleText: { color: '#b94f2b', fontSize: 12, fontWeight: '700' },
@@ -2455,7 +2306,6 @@ const baseStyles = StyleSheet.create({
   auditDetails: { color: '#82766e', fontSize: 10, marginTop: 4 },
   branchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#f0ebe5', paddingVertical: 12 },
   branchRowActive: { backgroundColor: '#f5ece6' },
-  demoHint: { color: '#82766e', fontSize: 11, textAlign: 'center', marginTop: 10 },
   app: { flex: 1, flexDirection: 'row', position: 'relative' },
   appMobile: { flexDirection: 'column' },
   accountBackgroundImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%', opacity: 0.3 },

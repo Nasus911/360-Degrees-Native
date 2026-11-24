@@ -56,6 +56,7 @@ The customer UI enforces consent → National ID upload/OCR → guided camera in
 
 ## Scope and limitations
 
+- Identity face capture requires the native Android or iOS app; the web build displays a notice instead of loading the native-only camera module.
 - The OCR parser expects labeled National ID fields and requires name, date of birth, address, and a 12–16 digit PCN. Expiration is not applicable for this supported type.
 - The face score threshold is a demonstration default, not a production decision threshold. Validate it on suitable test data before any real use.
 - Capture prompts are user guidance, not liveness detection. No face embeddings are retained by the service.

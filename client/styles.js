@@ -73,7 +73,6 @@ export const styles = StyleSheet.create({
   auditDetails: { color: c.muted, fontSize: 11, marginTop: 4 },
   branchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: c.line, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 10 },
   branchRowActive: { backgroundColor: c.brandTint },
-  demoHint: { color: c.muted, fontSize: 11, textAlign: 'center', marginTop: 14 },
 
   app: { flex: 1, flexDirection: 'row', position: 'relative' },
   appMobile: { flexDirection: 'column' },
