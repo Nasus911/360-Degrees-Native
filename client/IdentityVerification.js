@@ -301,6 +301,7 @@ export default function IdentityVerification({ user }) {
       applyRecord(started);
       setNotice('');
     } catch (error) {
+      setNotice('');
       setErrorMessage(error.message || 'Unable to start verification.');
     } finally {
       setBusy(false);
@@ -525,7 +526,7 @@ export default function IdentityVerification({ user }) {
     <View style={styles.container}>
       <Text style={styles.eyebrow}>IDENTITY VERIFICATION</Text>
       <Text style={styles.title}>Philippine National ID</Text>
-      <Text style={styles.subtitle}>This demo supports the Philippine National ID only. OCR and face matching do not prove that an ID is genuine.</Text>
+      <Text style={styles.subtitle}>This service currently supports the Philippine National ID only. OCR and face matching do not prove that an ID is genuine.</Text>
       {statusLoading ? (
         <View style={styles.statusLoading}>
           <ActivityIndicator size="small" color="#7b4b35" />
@@ -541,7 +542,7 @@ export default function IdentityVerification({ user }) {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Before you begin</Text>
           <Text style={styles.body}>Upload the front of a Philippine National ID, then capture a guided face sequence. The service reads the name, date of birth, address, and PCN, then compares the ID portrait with your frontal capture.</Text>
-          <Text style={styles.body}>Images are kept in private storage. A successful face comparison deletes them; incomplete sessions and their images expire after 24 hours. Submitted name, birth date, address, and ID number remain in the verification record with no automatic deletion period in this demo. Use synthetic data, or do not continue unless you understand and agree to this processing.</Text>
+          <Text style={styles.body}>Images are kept in private storage. A successful face comparison deletes them; incomplete sessions and their images expire after 24 hours. Submitted name, birth date, address, and ID number remain in the verification record, and no automatic deletion period is currently configured. Review this information and continue only if you agree to this processing.</Text>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityState={{ checked: consentAccepted }}
@@ -549,7 +550,7 @@ export default function IdentityVerification({ user }) {
             style={styles.consentRow}
           >
             <View style={[styles.checkbox, consentAccepted && styles.checkboxChecked]} />
-            <Text style={styles.body}>I consent to process my ID image and face image for this identity-verification demonstration.</Text>
+            <Text style={styles.body}>I consent to process my ID image and face image for identity verification.</Text>
           </Pressable>
           <PrimaryButton title="Continue" disabled={busy || !consentAccepted} onPress={startVerification} />
         </View>
@@ -558,7 +559,7 @@ export default function IdentityVerification({ user }) {
       {screen === 'document' && (
         <View style={styles.card}>
           <StepHeading number="1" title="Upload and scan your ID" />
-          <Text style={styles.body}>Use a clear, glare-free image of the front of your Philippine National ID. Required fields for this demo are name, date of birth, address, and PCN. Expiration date is not applicable.</Text>
+          <Text style={styles.body}>Use a clear, glare-free image of the front of your Philippine National ID. Required fields are name, date of birth, address, and PCN. Expiration date is not applicable.</Text>
           <PrimaryButton title="Choose ID image" disabled={busy} onPress={chooseAndScanId} />
           {record?.status === 'id_uploaded' && (
             <SecondaryButton title="Retry ID scan" disabled={busy} onPress={retryScan} />
@@ -639,7 +640,7 @@ export default function IdentityVerification({ user }) {
               <Text style={styles.resultText}>ID number: {record.fields.id_number}</Text>
             </View>
           ) : null}
-          <SecondaryButton title="Start a new demo verification" disabled={busy} onPress={() => {
+          <SecondaryButton title="Start a new verification" disabled={busy} onPress={() => {
             setRecord(null);
             setDraftFields(null);
             setConsentAccepted(false);

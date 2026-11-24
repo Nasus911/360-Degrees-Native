@@ -46,6 +46,12 @@
         "projectId": "80c64847-0d42-4b50-b8ed-b3db76630110"
       }
     },
-    "owner": "naxus911"
+    "owner": "naxus911",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/80c64847-0d42-4b50-b8ed-b3db76630110"
+    }
   }
 }
