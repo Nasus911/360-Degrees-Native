@@ -7,6 +7,9 @@
     "start": "node index.js",
     "test": "node --test"
   },
+  "engines": {
+    "node": ">=20 <23"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -16,5 +19,8 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.6",
     "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "supabase": "^3.3.0"
   }
 }

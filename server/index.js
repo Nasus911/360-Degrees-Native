@@ -13,8 +13,12 @@ const {
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
-app.use(cors());
+app.use(cors({ origin: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 app.use(express.json());
+
+app.get('/healthz', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -31,6 +35,12 @@ const IDENTITY_PROCESSOR_TOKEN = process.env.IDENTITY_VERIFICATION_TOKEN;
 function requireConfiguration() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY || process.env.SUPABASE_URL === 'https://supabase.co' || process.env.SUPABASE_KEY === 'your-anon-public-api-key-here') {
     throw new Error('Configure SUPABASE_URL and SUPABASE_KEY in server/.env before starting the API.');
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('Missing optional environment variable SUPABASE_SERVICE_ROLE_KEY. Admin account creation and identity verification will be unavailable.');
+  }
+  if (!IDENTITY_PROCESSOR_URL || !IDENTITY_PROCESSOR_TOKEN) {
+    console.warn('Missing optional environment variables IDENTITY_VERIFICATION_URL and/or IDENTITY_VERIFICATION_TOKEN. The identity verification processor will be unavailable.');
   }
 }
 
@@ -1153,6 +1163,13 @@ app.post('/api/pos/checkout', async (req, res) => {
       return res.status(400).json({ error: 'Select a branch and add products before charging.' });
     }
     const pickupAt = req.body.pickupAt || null;
+    const paymentMethod = req.body.paymentMethod || 'fake_money';
+    if (!['fake_money', 'points'].includes(paymentMethod)) {
+      return res.status(400).json({ error: 'Choose a valid payment method.' });
+    }
+    if (paymentMethod === 'points' && result.profile.role !== 'customer') {
+      return res.status(400).json({ error: 'Only customer accounts can pay with points.' });
+    }
     if (pickupAt && (typeof pickupAt !== 'string' || Number.isNaN(Date.parse(pickupAt)))) {
       return res.status(400).json({ error: 'Choose a valid pickup time.' });
     }
@@ -1176,6 +1193,7 @@ app.post('/api/pos/checkout', async (req, res) => {
           p_branch_id: branchId,
           p_items: req.body.items,
           p_pickup_at: pickupAt,
+          p_payment_method: paymentMethod,
         })
         : await supabaseAdmin.rpc('process_customized_pos_checkout', {
           ...checkoutArgs,
@@ -1279,6 +1297,11 @@ app.post('/api/orders', async (req, res) => {
     if (!supabaseAdmin) return res.status(503).json({ error: 'Order checkout requires a server-only service-role key.' });
     const { branchId, items, pickupAt } = req.body;
     if (!branchId || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'A branch and at least one item are required.' });
+    const paymentMethod = req.body.paymentMethod || 'fake_money';
+    if (!['fake_money', 'points'].includes(paymentMethod)) return res.status(400).json({ error: 'Choose a valid payment method.' });
+    if (paymentMethod === 'points' && result.profile.role !== 'customer') {
+      return res.status(400).json({ error: 'Only customer accounts can pay with points.' });
+    }
     const { data, error } = result.profile.role === 'guest'
       ? await supabaseAdmin.rpc('process_guest_checkout', {
         p_actor_id: result.user.id,
@@ -1293,6 +1316,7 @@ app.post('/api/orders', async (req, res) => {
           p_branch_id: branchId,
           p_items: items,
           p_pickup_at: pickupAt || null,
+          p_payment_method: paymentMethod,
         })
         : await supabaseAdmin.rpc('process_customized_pos_checkout', {
           p_actor_id: result.user.id,
