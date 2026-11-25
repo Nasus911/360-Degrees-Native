@@ -120,6 +120,7 @@ function AppContent() {
   const [reportError, setReportError] = useState('');
   const [role, setRole] = useState(null);
   const [page, setPage] = useState('overview');
+  const [faceCaptureActive, setFaceCaptureActive] = useState(false);
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [cartFeedback, setCartFeedback] = useState(null);
@@ -784,23 +785,29 @@ function AppContent() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={faceCaptureActive ? [] : ['top', 'right', 'bottom', 'left']}>
       <View style={[styles.app, isMobile && styles.appMobile]}>
-        {isMobile && <Animated.View pointerEvents={menuOpen ? 'auto' : 'none'} style={[styles.drawerBackdrop, { opacity: backdropOpacity }]}>
+        {!faceCaptureActive && isMobile && <Animated.View pointerEvents={menuOpen ? 'auto' : 'none'} style={[styles.drawerBackdrop, { opacity: backdropOpacity }]}>
           <Pressable style={styles.drawerBackdropPressable} onPress={() => setMenuOpen(false)} accessibilityLabel="Close navigation menu" />
         </Animated.View>}
-        <Animated.View style={[styles.sidebar, isMobile && styles.sidebarMobile, isMobile && { width: drawerWidth, transform: [{ translateX: drawerPosition }] }]}>
+        {!faceCaptureActive && <Animated.View style={[styles.sidebar, isMobile && styles.sidebarMobile, isMobile && { width: drawerWidth, transform: [{ translateX: drawerPosition }] }]}>
           <View style={styles.brand}><BrandLogo size={isMobile ? Math.min(44, Math.max(34, width * 0.11)) : Math.min(60, Math.max(44, width * 0.055))} /><View style={styles.brandDetails}><Text style={styles.brandName}>360 Degrees Specialty Cafe</Text><Text style={styles.branch}>{branchName}</Text></View>{isMobile && <Pressable onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Close navigation menu"><Text style={styles.closeIcon}>×</Text></Pressable>}</View>
           <Text style={styles.label}>{role === 'customer' ? 'Your coffee shop' : `${config.label} workspace`}</Text>
           <View style={styles.nav}>{config.pages.map(([id, label, icon]) => <Pressable key={id} onPress={() => navigate(id)} style={[styles.navButton, page === id && styles.navButtonActive]}><Text style={styles.navIcon}>{icon}</Text><Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text></Pressable>)}</View>
           <View style={styles.sidebarFooter}><Text style={styles.store}>{branchName}</Text><Text style={styles.sidebarMuted}>{branchLocation}</Text><Text style={styles.person}>{user.name}</Text><Text style={styles.sidebarMuted}>{config.subtitle}</Text><Pressable onPress={signOut} style={styles.signOut}><Text style={styles.signOutText}>Sign out</Text></Pressable></View>
-        </Animated.View>
+        </Animated.View>}
         <View style={styles.main}>
           <PageBackground variant={role === 'customer' || role === 'guest' ? 'shop' : 'dashboard'}>
-          {isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>{branchName}</Text></View></View></View>}
-          <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><Text style={[styles.topbarTagline, (role === 'customer' || role === 'guest') && styles.topbarTaglineLight, isMobile && styles.topbarTaglineMobile]}>“A full circle of flavor &amp; comfort”</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>
-          <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}>
-            {notificationActionError ? <Text accessibilityRole="alert" style={styles.formError}>{notificationActionError}</Text> : null}
+          {!faceCaptureActive && isMobile && <View style={styles.mobileHeader}><Pressable onPress={() => setMenuOpen((open) => !open)} style={styles.menuButton} accessibilityLabel="Open navigation menu"><Text style={styles.menuIcon}>☰</Text></Pressable><View style={styles.mobileBrand}><BrandLogo size={Math.min(44, Math.max(34, width * 0.11))} /><View><Text style={styles.mobileBrandName}>360 Degrees Specialty Cafe</Text><Text style={styles.mobileBranch}>{branchName}</Text></View></View></View>}
+          {!faceCaptureActive && <View style={[styles.topbar, isMobile && styles.topbarMobile]}><Text style={styles.breadcrumb}>360 Degrees Specialty Cafe  /  {config.pages.find(([id]) => id === page)?.[1]}</Text><Text style={[styles.topbarTagline, (role === 'customer' || role === 'guest') && styles.topbarTaglineLight, isMobile && styles.topbarTaglineMobile]}>“A full circle of flavor &amp; comfort”</Text><View style={styles.topbarActions}>{isHeadAdmin && notifications.length > 0 && <Pressable style={styles.location} onPress={() => navigate('inventory')}><Text>Alerts · {notifications.length}</Text></Pressable>}<Pressable style={styles.location} onPress={() => (isHeadAdmin ? navigate('branches') : ['customer', 'guest'].includes(role) ? navigate('branch') : null)}><Text>{activeBranchId ? `⌖  ${branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected branch'}` : isHeadAdmin ? '⌖  All branches' : '⌖  Assigned branch'}</Text></Pressable></View></View>}
+          <ScrollView
+            style={faceCaptureActive && styles.captureScroll}
+            contentContainerStyle={faceCaptureActive
+              ? styles.captureContent
+              : [styles.content, isMobile && styles.contentMobile, (role === 'customer' || role === 'guest') && styles.contentWithCart]}
+            scrollEnabled={!faceCaptureActive}
+          >
+            {!faceCaptureActive && notificationActionError ? <Text accessibilityRole="alert" style={styles.formError}>{notificationActionError}</Text> : null}
             {page === 'overview' && <AdminOverview summary={reportSummary} reportError={reportError} onNavigate={navigate} branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} isHeadAdmin={isHeadAdmin} />}
             {page === 'branches' && <Branches branches={branches} selectedBranchId={activeBranchId} onSelectBranch={setActiveBranchId} onCreateBranch={createBranch} onToggleBranch={toggleBranch} />}
             {page === 'inventory' && <Inventory branchId={activeBranchId || user.branchId} isHeadAdmin={isHeadAdmin} notifications={isHeadAdmin ? notifications : []} onDismissNotification={dismissNotification} branches={branches} />}
@@ -819,15 +826,24 @@ function AppContent() {
             {page === 'menu' && <Products visibleProducts={visibleProducts} search={search} setSearch={setSearch} onAdd={addToCart} checkoutNotice={checkoutNotice} checkoutError={checkoutError} />}
             {page === 'orders' && <Orders orders={orders} user={user} />}
             {page === 'wallet' && role === 'customer' && <Wallet user={user} onRedeem={redeemReward} />}
-            {page === 'identity-verification' && role === 'customer' && <IdentityVerification user={user} />}
+            {page === 'identity-verification' && role === 'customer' && <IdentityVerification
+              user={user}
+              onCaptureActiveChange={(active) => {
+                setFaceCaptureActive(active);
+                if (active) {
+                  setMenuOpen(false);
+                  setCartOpen(false);
+                }
+              }}
+            />}
             {page === 'account' && <ManageAccount user={user} onSaveProfile={saveAccountProfile} onChangePassword={changeAccountPassword} />}
             {page === 'branch' && <BranchPicker branches={branches.filter((branch) => branch.is_active !== false)} selectedBranchId={activeBranchId} onSelectBranch={(id) => { setActiveBranchId(id); navigate('home'); }} />}
           </ScrollView>
-          {cartFeedback && <Animated.View accessibilityLiveRegion="polite" pointerEvents="none" style={[styles.cartFeedback, { bottom: (role === 'customer' || role === 'guest') ? 82 : 20, opacity: cartFeedbackOpacity, transform: [{ translateY: cartFeedbackTranslateY }] }]}>
+          {!faceCaptureActive && cartFeedback && <Animated.View accessibilityLiveRegion="polite" pointerEvents="none" style={[styles.cartFeedback, { bottom: (role === 'customer' || role === 'guest') ? 82 : 20, opacity: cartFeedbackOpacity, transform: [{ translateY: cartFeedbackTranslateY }] }]}>
             <View style={styles.cartFeedbackCheck}><Text style={styles.cartFeedbackCheckText}>✓</Text></View>
             <View style={styles.cartFeedbackCopy}><Text style={styles.cartFeedbackTitle}>Added to cart</Text><Text style={styles.cartFeedbackName} numberOfLines={1}>{cartFeedback.productName}</Text></View>
           </Animated.View>}
-          {(role === 'customer' || role === 'guest') && <>
+          {!faceCaptureActive && (role === 'customer' || role === 'guest') && <>
             <Animated.View style={[styles.cartFloatingButton, { transform: [{ scale: cartButtonScale }] }]}>
               <Pressable accessibilityRole="button" accessibilityLabel={`Open cart, ${cart.reduce((sum, item) => sum + item.quantity, 0)} items`} style={styles.cartFloatingPressable} onPress={() => setCartOpen(true)}>
                 <Text style={styles.cartFloatingText}>Cart · {cart.reduce((sum, item) => sum + item.quantity, 0)}</Text>
@@ -2366,6 +2382,8 @@ const baseStyles = StyleSheet.create({
   content: { padding: 28, maxWidth: 1440, width: '100%' },
   contentMobile: { padding: 16 },
   contentWithCart: { paddingBottom: 100 },
+  captureScroll: { flex: 1 },
+  captureContent: { flexGrow: 1, width: '100%', maxWidth: '100%', padding: 0 },
   heading: { marginBottom: 22 },
   eyebrow: { color: '#b94f2b', fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { color: '#30251f', fontFamily: 'Georgia', fontSize: 34, marginTop: 7, marginBottom: 6 },
