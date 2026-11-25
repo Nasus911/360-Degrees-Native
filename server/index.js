@@ -6,6 +6,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const {
   canSubmitVerification,
   isVerificationObjectPath,
+  mapProcessorErrorStatus,
   publicVerification,
   validateReviewedFields,
 } = require('./identityVerification');
@@ -165,7 +166,7 @@ async function sendImageToProcessor(route, fields) {
   }
   if (!response.ok) {
     const error = new Error(typeof payload.detail === 'string' ? payload.detail : 'The identity verification processor could not process the image.');
-    error.status = response.status;
+    error.status = mapProcessorErrorStatus(response.status);
     throw error;
   }
   return payload;

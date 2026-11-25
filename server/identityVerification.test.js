@@ -4,9 +4,15 @@ const {
   canReviewVerification,
   canSubmitVerification,
   isVerificationObjectPath,
+  mapProcessorErrorStatus,
   publicVerification,
   validateReviewedFields,
 } = require('./identityVerification');
+
+test('processor authentication errors do not look like customer session errors', () => {
+  assert.equal(mapProcessorErrorStatus(401), 502);
+  assert.equal(mapProcessorErrorStatus(503), 503);
+});
 
 test('personal fields stay hidden until face matching passes', () => {
   const row = {
