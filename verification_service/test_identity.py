@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -11,6 +12,7 @@ from identity import (
     compare_face_features,
     configure_tesseract,
     decode_image,
+    extract_id_fields,
     find_single_face,
     image_quality_issues,
     parse_national_id_text,
@@ -143,6 +145,26 @@ class NationalIdParserTests(unittest.TestCase):
         decoded = decode_image(encoded.tobytes())
 
         self.assertEqual(decoded.shape[:2], (1800, 2400))
+
+    def test_complete_primary_ocr_skips_fallback_and_pcn_passes(self):
+        image = np.full((800, 1200, 3), 255, dtype=np.uint8)
+        pytesseract = SimpleNamespace(
+            image_to_string=Mock(return_value=(
+                "FULL NAME: SAMPLE PERSON\n"
+                "DATE OF BIRTH: 2000-01-02\n"
+                "ADDRESS: SAMPLE STREET, LIPA CITY\n"
+                "PCN: 1234-5678-9012-3456"
+            ))
+        )
+        with patch.dict(sys.modules, {"pytesseract": pytesseract}):
+            with patch("identity.configure_tesseract"):
+                with patch("identity.image_quality_issues", return_value=[]):
+                    with patch("identity._read_pcn_from_image") as read_pcn:
+                        result = extract_id_fields(image)
+
+        self.assertTrue(result["passed"])
+        pytesseract.image_to_string.assert_called_once()
+        read_pcn.assert_not_called()
 
     def test_large_face_capture_is_downscaled_and_coordinates_restored(self):
         class FakeDetector:

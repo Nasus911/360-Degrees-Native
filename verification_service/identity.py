@@ -327,19 +327,22 @@ def extract_id_fields(image: np.ndarray) -> dict:
         gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )[1]
     text_11 = pytesseract.image_to_string(prepared, lang="eng", config="--psm 11")
-    text_6 = pytesseract.image_to_string(prepared, lang="eng", config="--psm 6")
     parsed = parse_national_id_text(text_11)
-    fallback = parse_national_id_text(text_6)
-    for field in ("full_name", "date_of_birth", "address", "id_number"):
-        if not parsed["fields"].get(field) and fallback["fields"].get(field):
-            parsed["fields"][field] = fallback["fields"][field]
+    if not parsed["passed"]:
+        text_6 = pytesseract.image_to_string(prepared, lang="eng", config="--psm 6")
+        fallback = parse_national_id_text(text_6)
+        for field in ("full_name", "date_of_birth", "address", "id_number"):
+            if not parsed["fields"].get(field) and fallback["fields"].get(field):
+                parsed["fields"][field] = fallback["fields"][field]
     missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
     parsed["issues"] = [
         f"Could not read {field.replace('_', ' ')}. Retake the ID photo or check the field."
         for field in missing
     ]
     parsed["passed"] = not missing
-    pcn = _read_pcn_from_image(prepared, pytesseract)
+    pcn = None
+    if not parsed["fields"].get("id_number"):
+        pcn = _read_pcn_from_image(prepared, pytesseract)
     if pcn:
         parsed["fields"]["id_number"] = pcn
         parsed["issues"] = [
