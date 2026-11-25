@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
+  BackHandler,
   Platform,
   Pressable,
   StyleSheet,
@@ -114,6 +114,7 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
   const camera = useFaceCamera();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const [previewSlotSize, setPreviewSlotSize] = useState(null);
   const [challengeSteps, setChallengeSteps] = useState(shuffledChallengeSteps);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState(() => new Set());
@@ -214,7 +215,10 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
   const safeTop = insets.top;
   const safeBottom = insets.bottom;
   const previewMaxHeight = Math.max(190, height - safeTop - safeBottom - 286);
-  const previewWidth = Math.max(180, Math.min(width - 32, previewMaxHeight * 0.75));
+  const fallbackPreviewWidth = Math.max(180, Math.min(width - 36, previewMaxHeight * 0.75));
+  const previewWidth = previewSlotSize?.width > 0 && previewSlotSize?.height > 0
+    ? Math.min(previewSlotSize.width, previewSlotSize.height * 0.75)
+    : fallbackPreviewWidth;
   const previewHeight = previewWidth / 0.75;
   const centerX = previewWidth / 2;
   const centerY = previewHeight * FACE_GUIDE.centerY;
@@ -291,16 +295,16 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
   const hasCompletedPosition = positionComplete || completedSteps.size > 0;
   const topPadding = insets.top;
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onClose]);
+
   return (
-    <Modal
-      visible
-      animationType="fade"
-      presentationStyle="fullScreen"
-      hardwareAccelerated={Platform.OS === 'android'}
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
-    >
+    <>
       <StatusBar hidden />
       <SafeAreaView style={[styles.captureScreen, { paddingTop: topPadding }]} edges={['bottom']}>
         <View style={styles.captureHeader}>
@@ -333,7 +337,17 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
             );
           })}
         </View>
-        <View style={styles.capturePreviewSlot}>
+        <View
+          style={styles.capturePreviewSlot}
+          onLayout={({ nativeEvent }) => {
+            const { width: slotWidth, height: slotHeight } = nativeEvent.layout;
+            setPreviewSlotSize((current) => (
+              current?.width === slotWidth && current?.height === slotHeight
+                ? current
+                : { width: slotWidth, height: slotHeight }
+            ));
+          }}
+        >
           <View style={[styles.capturePreview, { width: previewWidth, height: previewHeight }]}>
             <FaceCamera
               camera={camera}
@@ -473,7 +487,7 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
           </Pressable>
         </View>
       </SafeAreaView>
-    </Modal>
+    </>
   );
 }
 
@@ -555,7 +569,7 @@ async function uploadPrivateImage(uri, path, base64 = null) {
   if (error) throw error;
 }
 
-export default function IdentityVerification({ user }) {
+export default function IdentityVerification({ user, onCaptureActiveChange }) {
   const [screen, setScreen] = useState('consent');
   const [record, setRecord] = useState(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
@@ -567,6 +581,11 @@ export default function IdentityVerification({ user }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [captureStatus, setCaptureStatus] = useState('');
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const setCaptureActive = (active) => {
+    setCameraActive(active);
+    onCaptureActiveChange?.(active);
+  };
 
   const applyRecord = (next) => {
     setRecord(next);
@@ -791,7 +810,7 @@ export default function IdentityVerification({ user }) {
       }
     }
     setCaptureStatus('Starting camera...');
-    setCameraActive(true);
+    setCaptureActive(true);
     setErrorMessage('');
   };
 
@@ -864,6 +883,30 @@ export default function IdentityVerification({ user }) {
   };
   const faceMatchPassed = record?.status === 'face_match_passed';
 
+  if (cameraActive) {
+    return (
+      <View style={styles.captureRoot}>
+        <GuidedFaceCamera
+          onReady={() => setCaptureStatus('')}
+          onCapture={(photo) => {
+            setCaptureActive(false);
+            setCaptureStatus('');
+            uploadAndMatch(photo.uri);
+          }}
+          onError={(error) => {
+            setCaptureActive(false);
+            setCaptureStatus('');
+            setErrorMessage(error?.message || 'The camera could not start. Check camera permission, then retry.');
+          }}
+          onClose={() => {
+            setCaptureActive(false);
+            setCaptureStatus('');
+          }}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.eyebrow}>IDENTITY VERIFICATION</Text>
@@ -929,25 +972,6 @@ export default function IdentityVerification({ user }) {
             <>
               <Text style={styles.body}>Follow the full-screen face prompts. The camera checks each movement in a randomized order, then captures a clear front-facing photo for comparison.</Text>
               <PrimaryButton title={record?.status === 'face_match_failed' ? 'Retry face capture' : 'Start face capture'} disabled={busy} onPress={captureGuidedFace} />
-              {cameraActive ? (
-                <GuidedFaceCamera
-                  onReady={() => setCaptureStatus('')}
-                  onCapture={(photo) => {
-                    setCameraActive(false);
-                    setCaptureStatus('');
-                    uploadAndMatch(photo.uri);
-                  }}
-                  onError={(error) => {
-                    setCameraActive(false);
-                    setCaptureStatus('');
-                    setErrorMessage(error?.message || 'The camera could not start. Check camera permission, then retry.');
-                  }}
-                  onClose={() => {
-                    setCameraActive(false);
-                    setCaptureStatus('');
-                  }}
-                />
-              ) : null}
             </>
           )}
         </View>
@@ -1054,6 +1078,7 @@ function SecondaryButton({ title, disabled, onPress }) {
 
 const styles = StyleSheet.create({
   container: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingBottom: 36 },
+  captureRoot: { flex: 1, backgroundColor: '#101316' },
   center: { minHeight: 220, justifyContent: 'center', alignItems: 'center', gap: 12 },
   eyebrow: { color: '#936a54', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 },
   title: { color: '#33241e', fontSize: 28, fontWeight: '800', marginBottom: 8 },
