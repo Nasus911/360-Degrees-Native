@@ -158,11 +158,17 @@ async function sendImageToProcessor(route, fields) {
     body: form,
     signal: AbortSignal.timeout(90000),
   });
+  const contentType = response.headers.get('content-type') || 'unknown content type';
+  const responseText = await response.text();
   let payload;
   try {
-    payload = await response.json();
+    payload = responseText ? JSON.parse(responseText) : {};
   } catch {
-    throw new Error('The identity verification processor returned an invalid response.');
+    const error = new Error(
+      `The identity verification processor returned an invalid response (HTTP ${response.status}; ${contentType}).`,
+    );
+    error.status = 502;
+    throw error;
   }
   if (!response.ok) {
     const error = new Error(typeof payload.detail === 'string' ? payload.detail : 'The identity verification processor could not process the image.');
@@ -394,9 +400,9 @@ app.post('/api/identity-verifications/:id/scan', async (req, res) => {
     if (error) throw error;
     res.json(publicVerification(data));
   } catch (error) {
-    console.error('Identity document scan failed.');
     const status = error.status >= 400 && error.status < 600 ? error.status : 500;
     const detail = typeof error.message === 'string' ? error.message : '';
+    console.error('Identity document scan failed.', { status, detail });
     res.status(status).json({
       error: status === 503
         ? 'The document scanner is unavailable. Try again shortly.'
