@@ -135,6 +135,15 @@ class NationalIdParserTests(unittest.TestCase):
             find_single_face(image, FakeDetector(np.array([face, face])))[1],
         )
 
+    def test_large_id_images_are_downscaled_before_ocr(self):
+        image = np.zeros((3000, 4000, 3), dtype=np.uint8)
+        success, encoded = cv2.imencode(".jpg", image)
+        self.assertTrue(success)
+
+        decoded = decode_image(encoded.tobytes())
+
+        self.assertEqual(decoded.shape[:2], (1800, 2400))
+
     def test_large_face_capture_is_downscaled_and_coordinates_restored(self):
         class FakeDetector:
             def setInputSize(self, size):

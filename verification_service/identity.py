@@ -12,6 +12,7 @@ DOCUMENT_TYPE = "philippine_national_id"
 REQUIRED_FIELDS = ("full_name", "date_of_birth", "address", "id_number")
 FACE_MATCH_THRESHOLD = 0.363
 MAX_IMAGE_PIXELS = 20_000_000
+MAX_IMAGE_DIMENSION = 2400
 
 
 def configure_tesseract(pytesseract) -> str:
@@ -99,6 +100,13 @@ def decode_image(image_bytes: bytes) -> np.ndarray:
         raise ValueError("The image is too small. Upload a higher-resolution image.")
     if width * height > MAX_IMAGE_PIXELS:
         raise ValueError("The image is too large to process. Resize it and try again.")
+    if max(width, height) > MAX_IMAGE_DIMENSION:
+        scale = MAX_IMAGE_DIMENSION / max(width, height)
+        image = cv2.resize(
+            image,
+            (round(width * scale), round(height * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
     return image
 
 
