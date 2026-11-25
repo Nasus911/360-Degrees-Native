@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const { randomBytes, randomUUID } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const {
   canSubmitVerification,
   hasRecognizedIdentityField,
@@ -17,6 +18,21 @@ const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors({ origin: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 app.use(express.json());
+app.use((req, res, next) => {
+  const startedAt = performance.now();
+  res.once('finish', () => {
+    const durationMs = Math.round(performance.now() - startedAt);
+    if (durationMs >= 1000) {
+      console.warn('Slow API request', {
+        method: req.method,
+        route: req.route?.path || 'unmatched',
+        status: res.statusCode,
+        durationMs,
+      });
+    }
+  });
+  next();
+});
 
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -75,9 +91,13 @@ async function getProfile(userId, accessToken) {
       global: { headers: { Authorization: `Bearer ${accessToken}` } },
     })
     : supabaseAdmin || supabase;
-  const { data, error } = await profileClient.from('profiles').select('*').eq('id', userId).single();
+  const { data, error } = await profileClient.from('profiles')
+    .select('*, branch:branches!profiles_branch_id_fkey(is_active)')
+    .eq('id', userId)
+    .single();
   if (error) throw error;
-  return data;
+  const { branch, ...profile } = data;
+  return { profile, branchIsActive: branch?.is_active === true };
 }
 
 async function requireUser(req, res, roles = []) {
@@ -87,7 +107,7 @@ async function requireUser(req, res, roles = []) {
     res.status(401).json({ error: 'Authentication required.' });
     return null;
   }
-  const profile = await getProfile(user.id, accessToken);
+  const { profile, branchIsActive } = await getProfile(user.id, accessToken);
   if (profile.is_active === false) {
     res.status(403).json({ error: 'This account is inactive. Contact a head administrator.' });
     return null;
@@ -96,12 +116,9 @@ async function requireUser(req, res, roles = []) {
     res.status(403).json({ error: 'This guest account has expired. Start a new guest session to continue.' });
     return null;
   }
-  if (profile.branch_id && profile.role !== 'customer') {
-    const { data: branch, error: branchError } = await (supabaseAdmin || supabase).from('branches').select('is_active').eq('id', profile.branch_id).single();
-    if (branchError || !branch?.is_active) {
-      res.status(403).json({ error: 'This account’s branch is inactive.' });
-      return null;
-    }
+  if (profile.branch_id && profile.role !== 'customer' && !branchIsActive) {
+    res.status(403).json({ error: 'This account’s branch is inactive.' });
+    return null;
   }
   if (roles.length && !roles.includes(profile.role)) {
     res.status(403).json({ error: 'You do not have permission for this action.' });
@@ -232,12 +249,13 @@ app.post('/api/identity-verifications', async (req, res) => {
       return res.status(400).json({ error: 'Review and accept the current identity-processing notice before continuing.' });
     }
 
-    await purgeExpiredIdentityVerifications();
+    const now = new Date().toISOString();
     const { data: existing, error: existingError } = await supabaseAdmin
       .from('identity_verifications')
       .select('*')
       .eq('user_id', result.user.id)
       .neq('status', 'submitted')
+      .gt('expires_at', now)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -277,11 +295,12 @@ app.get('/api/identity-verifications/current', async (req, res) => {
     const result = await requireUser(req, res, ['customer']);
     if (!result) return;
     if (!getIdentityAdmin(res)) return;
-    await purgeExpiredIdentityVerifications();
+    const now = new Date().toISOString();
     const { data, error } = await supabaseAdmin
       .from('identity_verifications')
       .select('*')
       .eq('user_id', result.user.id)
+      .or(`status.eq.submitted,expires_at.gt.${now}`)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -691,7 +710,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     const { data, error } = await supabase.auth.signInWithPassword({ email: email?.trim().toLowerCase(), password });
     if (error) return res.status(401).json({ error: 'Email or password is incorrect.' });
-    const profile = await getProfile(data.user.id, data.session?.access_token);
+    const { profile } = await getProfile(data.user.id, data.session?.access_token);
     res.json({ session: data.session, user: data.user, profile });
   } catch (error) {
     console.error('Login failure:', error.message);

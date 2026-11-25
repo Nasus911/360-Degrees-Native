@@ -1,10 +1,13 @@
+from asyncio import gather
 import hmac
 import os
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 
 import cv2
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from identity import (
@@ -21,6 +24,13 @@ from identity import (
 
 app = FastAPI(title="Identity Verification Processor", docs_url=None, redoc_url=None)
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
+FACE_PROCESSING_LOCK = Lock()
+
+
+class FaceAlignmentError(Exception):
+    pass
+
+
 YUNET_PATH = Path(
     os.getenv(
         "YUNET_MODEL_PATH",
@@ -61,6 +71,24 @@ def load_face_models():
     return detector, recognizer
 
 
+def compare_face_images(id_image, selfie_image):
+    with FACE_PROCESSING_LOCK:
+        detector, recognizer = load_face_models()
+        id_face, id_issue = find_single_face(id_image, detector)
+        if id_issue:
+            return None, id_issue
+        selfie_face, selfie_issue = find_single_face(selfie_image, detector)
+        if selfie_issue:
+            return None, selfie_issue
+        try:
+            score = normalized_similarity(
+                recognizer, id_image, id_face, selfie_image, selfie_face
+            )
+        except cv2.error as error:
+            raise FaceAlignmentError from error
+    return score, None
+
+
 @app.get("/health")
 def health():
     return {
@@ -70,6 +98,7 @@ def health():
     }
 
 
+@lru_cache(maxsize=1)
 def _tesseract_on_path() -> bool:
     try:
         import pytesseract
@@ -91,7 +120,8 @@ async def scan_id(
     if document_type != DOCUMENT_TYPE:
         raise HTTPException(status_code=422, detail="Unsupported ID type.")
     try:
-        image = decode_image(await read_image_upload(file))
+        image_bytes = await read_image_upload(file)
+        image = await run_in_threadpool(decode_image, image_bytes)
     except ValueError as error:
         return JSONResponse(
             status_code=200,
@@ -99,7 +129,7 @@ async def scan_id(
         )
 
     try:
-        result = extract_id_fields(image)
+        result = await run_in_threadpool(extract_id_fields, image)
     except (OSError, RuntimeError) as error:
         raise HTTPException(
             status_code=503,
@@ -120,12 +150,18 @@ async def match_face(
 ):
     require_service_token(x_verification_token)
     try:
-        id_image = decode_image(await read_image_upload(id_document))
-        selfie_image = decode_image(await read_image_upload(selfie))
+        id_bytes, selfie_bytes = await gather(
+            read_image_upload(id_document),
+            read_image_upload(selfie),
+        )
+        id_image, selfie_image = await gather(
+            run_in_threadpool(decode_image, id_bytes),
+            run_in_threadpool(decode_image, selfie_bytes),
+        )
     except ValueError as error:
         return {"status": "failed", "match": False, "score": None, "issues": [str(error)]}
 
-    quality_issues = image_quality_issues(selfie_image)
+    quality_issues = await run_in_threadpool(image_quality_issues, selfie_image)
     if quality_issues:
         return {
             "status": "failed",
@@ -135,32 +171,25 @@ async def match_face(
         }
 
     try:
-        detector, recognizer = load_face_models()
+        score, face_issue = await run_in_threadpool(
+            compare_face_images, id_image, selfie_image
+        )
+    except FaceAlignmentError as error:
+        raise HTTPException(
+            status_code=422, detail="Could not align the faces. Retake the photos."
+        ) from error
     except (RuntimeError, cv2.error) as error:
         raise HTTPException(
             status_code=503, detail="Face matching is not configured. Install the models."
         ) from error
-
-    id_face, id_issue = find_single_face(id_image, detector)
-    if id_issue:
-        return {"status": "failed", "match": False, "score": None, "issues": [id_issue]}
-    selfie_face, selfie_issue = find_single_face(selfie_image, detector)
-    if selfie_issue:
+    if face_issue:
         return {
             "status": "failed",
             "match": False,
             "score": None,
-            "issues": [selfie_issue],
+            "issues": [face_issue],
         }
 
-    try:
-        score = normalized_similarity(
-            recognizer, id_image, id_face, selfie_image, selfie_face
-        )
-    except cv2.error as error:
-        raise HTTPException(
-            status_code=422, detail="Could not align the faces. Retake the photos."
-        ) from error
     matched = compare_face_features(score)
     return {
         "status": "passed" if matched else "failed",

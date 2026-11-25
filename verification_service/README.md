@@ -20,8 +20,9 @@ This feature supports the Philippine National ID only. OCR and face matching do 
    hosted project, apply the required pending migrations only after verifying
    the intended Supabase project (or use that project's SQL Editor). The current
    API requires `supabase/migrations/015_identity_verification.sql` and
-   `supabase/migrations/016_customer_checkout_payments.sql`. Do not link a
-   hosted project for local tests.
+   `supabase/migrations/016_customer_checkout_payments.sql`. Apply
+   `supabase/migrations/017_branch_query_indexes.sql` for branch-query
+   performance. Do not link a hosted project for local tests.
 4. Copy `server/.env.example` to `server/.env`. Configure the Supabase URL, public key, service-role key, and processor URL. Set `IDENTITY_VERIFICATION_TOKEN` to a new random value.
 5. In the `verification_service` terminal, set the same token and start the processor:
 
@@ -72,6 +73,10 @@ The Express API and Python processor are separate services. Do not set
 The processor image installs English Tesseract and downloads the required
 face models during the Docker build. Keep the processor token server-side; do
 not add it to the Expo app or EAS public environment variables.
+
+Render Free services sleep when idle, so the first request after inactivity
+can still take tens of seconds even after application queries are optimized.
+Avoiding that cold start requires an always-on service plan.
 
 ## Component choices
 
