@@ -12,12 +12,21 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-RUN python download_models.py
+
+RUN if [ -f requirements.txt ]; then \
+        python -m pip install --no-cache-dir -r requirements.txt; \
+    elif [ -f verification_service/requirements.txt ]; then \
+        python -m pip install --no-cache-dir -r verification_service/requirements.txt; \
+    else \
+        echo "requirements.txt not found" >&2; exit 1; \
+    fi
+
+RUN if [ -f download_models.py ]; then \
+        python download_models.py; \
+    else \
+        cd verification_service && python download_models.py; \
+    fi
 
 EXPOSE 10000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "if [ -f main.py ]; then uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}; else cd verification_service && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}; fi"]
