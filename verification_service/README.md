@@ -84,7 +84,7 @@ not add it to the Expo app or EAS public environment variables.
 
 ## Implemented flow
 
-The customer UI enforces consent → National ID upload/OCR → guided camera instructions → face comparison → editable information review → submission. The API authenticates every request, owns status transitions, hides extracted fields until both checks pass, and expires incomplete sessions after 24 hours. Images use a private Supabase bucket and are deleted after a successful face comparison; failed scans retain only the ID image needed for retry. Submitted personal information has no automatic deletion period in this demo, so define and implement a retention policy before using real identity data.
+The customer UI enforces consent → National ID upload/OCR → immediate editable information review → guided camera instructions → face comparison → final review → submission. Readable OCR fields are shown for correction even when other fields were not recognized; face matching and required-field validation remain mandatory before submission. The API authenticates every request, owns status transitions, and expires incomplete sessions after 24 hours. Images use a private Supabase bucket and are deleted after a successful face comparison; failed scans retain only the ID image needed for retry. Submitted personal information has no automatic deletion period in this demo, so define and implement a retention policy before using real identity data.
 
 ## Scope and limitations
 

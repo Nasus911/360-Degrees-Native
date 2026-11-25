@@ -1,4 +1,4 @@
-const REVIEWABLE_STATUSES = new Set(['face_match_passed', 'submitted']);
+const REVIEWABLE_STATUSES = new Set(['id_scan_passed', 'face_match_passed', 'submitted']);
 
 function isVerificationObjectPath(path, userId, verificationId, prefix) {
   if (typeof path !== 'string') return false;
@@ -15,6 +15,12 @@ function canReviewVerification(status) {
 
 function canSubmitVerification(status) {
   return status === 'face_match_passed';
+}
+
+function hasRecognizedIdentityField(fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return false;
+  return ['full_name', 'date_of_birth', 'address', 'id_number']
+    .some((field) => typeof fields[field] === 'string' && fields[field].trim());
 }
 
 function mapProcessorErrorStatus(status) {
@@ -65,6 +71,7 @@ function publicVerification(row) {
 module.exports = {
   canReviewVerification,
   canSubmitVerification,
+  hasRecognizedIdentityField,
   isVerificationObjectPath,
   mapProcessorErrorStatus,
   publicVerification,

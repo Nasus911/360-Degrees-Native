@@ -5,6 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { randomBytes, randomUUID } = require('node:crypto');
 const {
   canSubmitVerification,
+  hasRecognizedIdentityField,
   isVerificationObjectPath,
   mapProcessorErrorStatus,
   publicVerification,
@@ -384,13 +385,17 @@ app.post('/api/identity-verifications/:id/scan', async (req, res) => {
     const scan = await sendImageToProcessor('/scan-id?document_type=philippine_national_id', {
       file: { blob, filename: 'national-id.jpg' },
     });
-    const passed = scan.status === 'passed' && scan.fields;
+    const fields = scan.fields && typeof scan.fields === 'object' && !Array.isArray(scan.fields)
+      ? scan.fields
+      : null;
+    const hasRecognizedText = hasRecognizedIdentityField(fields);
+    const passed = hasRecognizedText && ['passed', 'failed'].includes(scan.status);
     const issues = Array.isArray(scan.issues) ? scan.issues.slice(0, 8) : [];
     const { data, error } = await supabaseAdmin
       .from('identity_verifications')
       .update({
         status: passed ? 'id_scan_passed' : 'id_scan_failed',
-        extracted_fields: passed ? scan.fields : null,
+        extracted_fields: passed ? fields : null,
         scan_issues: issues,
         updated_at: new Date().toISOString(),
       })

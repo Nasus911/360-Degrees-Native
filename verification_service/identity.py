@@ -317,8 +317,6 @@ def extract_id_fields(image: np.ndarray) -> dict:
 
     configure_tesseract(pytesseract)
     quality_issues = image_quality_issues(image)
-    if quality_issues:
-        return {"fields": None, "issues": quality_issues, "passed": False}
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     if min(gray.shape[:2]) < 500:
@@ -335,7 +333,7 @@ def extract_id_fields(image: np.ndarray) -> dict:
             if not parsed["fields"].get(field) and fallback["fields"].get(field):
                 parsed["fields"][field] = fallback["fields"][field]
     missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
-    parsed["issues"] = [
+    parsed["issues"] = quality_issues + [
         f"Could not read {field.replace('_', ' ')}. Retake the ID photo or check the field."
         for field in missing
     ]
@@ -345,12 +343,12 @@ def extract_id_fields(image: np.ndarray) -> dict:
         pcn = _read_pcn_from_image(prepared, pytesseract)
     if pcn:
         parsed["fields"]["id_number"] = pcn
-        parsed["issues"] = [
-            issue
-            for issue in parsed["issues"]
-            if issue != "Could not read id number. Retake the ID photo or check the field."
+        missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
+        parsed["issues"] = quality_issues + [
+            f"Could not read {field.replace('_', ' ')}. Retake the ID photo or check the field."
+            for field in missing
         ]
-        parsed["passed"] = not parsed["issues"]
+        parsed["passed"] = not missing
     parsed["fields"]["expiration_date"] = None
     return parsed
 
