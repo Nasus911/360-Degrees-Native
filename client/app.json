@@ -20,7 +20,8 @@
       ],
       "expo-image-picker",
       "expo-status-bar",
-      "@rbayuokt/expo-face-vision"
+      "@rbayuokt/expo-face-vision",
+      "./plugins/withFaceVisionAndroidCameraXFix"
     ],
     "ios": {
       "supportsTablet": true
