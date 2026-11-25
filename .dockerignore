@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+.venv
+**/.venv
+client
+server
+supabase
+repo
+*.apk
