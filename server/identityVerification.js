@@ -17,6 +17,10 @@ function canSubmitVerification(status) {
   return status === 'face_match_passed';
 }
 
+function mapProcessorErrorStatus(status) {
+  return status === 401 ? 502 : status;
+}
+
 function validateReviewedFields(fields) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
   const fullName = typeof fields.full_name === 'string' ? fields.full_name.trim() : '';
@@ -62,6 +66,7 @@ module.exports = {
   canReviewVerification,
   canSubmitVerification,
   isVerificationObjectPath,
+  mapProcessorErrorStatus,
   publicVerification,
   validateReviewedFields,
 };
