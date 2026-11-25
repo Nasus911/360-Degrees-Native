@@ -15,7 +15,13 @@ This feature supports the Philippine National ID only. OCR and face matching do 
    ```
 
    The YuNet model directory is MIT licensed; SFace and Tesseract are Apache-2.0 licensed. The downloader verifies the SHA-256 checksums before using either model. Keep the downloaded model files out of source control.
-3. Apply `supabase/migrations/015_identity_verification.sql` to your Supabase project (`supabase db push` after linking the project, or use the Supabase SQL Editor).
+3. For the complete offline local setup, including all migrations and the local
+   processor URL, follow [LOCAL_DEVELOPMENT.md](../LOCAL_DEVELOPMENT.md). For a
+   hosted project, apply the required pending migrations only after verifying
+   the intended Supabase project (or use that project's SQL Editor). The current
+   API requires `supabase/migrations/015_identity_verification.sql` and
+   `supabase/migrations/016_customer_checkout_payments.sql`. Do not link a
+   hosted project for local tests.
 4. Copy `server/.env.example` to `server/.env`. Configure the Supabase URL, public key, service-role key, and processor URL. Set `IDENTITY_VERIFICATION_TOKEN` to a new random value.
 5. In the `verification_service` terminal, set the same token and start the processor:
 
@@ -35,11 +41,37 @@ This feature supports the Philippine National ID only. OCR and face matching do 
    ```powershell
    Set-Location client
    Copy-Item .env.example .env
-   # Set EXPO_PUBLIC_API_URL and the Supabase public settings in client/.env.
+   # Set the Supabase public settings in client/.env.
+   $env:EXPO_PUBLIC_API_URL = 'http://YOUR_COMPUTER_LAN_IP:3000'
    npx.cmd expo start
    ```
 
-Never put the Supabase service-role key or processor token in the Expo app. For a physical phone, `EXPO_PUBLIC_API_URL` must use the computer’s LAN IP; the Python processor remains on the Node server’s loopback interface.
+Never put the Supabase service-role key or processor token in the Expo app. For local phone development, set `EXPO_PUBLIC_API_URL` to the computer’s LAN IP in the Expo terminal. EAS preview APKs read that value from `client/eas.json`; the Python processor remains on the Node server’s loopback interface.
+
+## Deploy the processor on Render
+
+The Express API and Python processor are separate services. Do not set
+`IDENTITY_VERIFICATION_URL` to the Express API URL, `localhost`, or
+`127.0.0.1`.
+
+1. In Render, create a separate **Web Service** from this repository and choose
+   Docker as the runtime.
+2. Set the service's **Root Directory** to `verification_service` and its
+   **Dockerfile Path** to `Dockerfile`.
+3. Add `VERIFICATION_SERVICE_TOKEN` as a secret environment variable. Use a new
+   random, single-line value. Render supplies the port; the Dockerfile binds
+   Uvicorn to `0.0.0.0` and that port.
+4. Set the processor service's health check path to `/health`. After deployment,
+   its `/health` response should report `ocr_configured` and
+   `face_models_configured` as `true`.
+5. In the separate Express API service, set `IDENTITY_VERIFICATION_URL` to the
+   processor service's public base URL (without `/health`) and set
+   `IDENTITY_VERIFICATION_TOKEN` to the exact same secret as
+   `VERIFICATION_SERVICE_TOKEN`. Redeploy the API after changing its variables.
+
+The processor image installs English Tesseract and downloads the required
+face models during the Docker build. Keep the processor token server-side; do
+not add it to the Expo app or EAS public environment variables.
 
 ## Component choices
 
