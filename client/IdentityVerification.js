@@ -296,6 +296,7 @@ function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
       visible
       animationType="fade"
       presentationStyle="fullScreen"
+      hardwareAccelerated={Platform.OS === 'android'}
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onClose}
