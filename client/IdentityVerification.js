@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -8,134 +10,469 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Ellipse, Path } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import {
   FaceCamera,
-  useBlinkDetection,
+  getCapabilities,
   useCameraPermissions,
+  useFaceAutoCapture,
   useFaceCamera,
-  useFaceFrames,
+  useFaceValidation,
+  useLivenessChallenge,
 } from '@rbayuokt/expo-face-vision';
 import { requestApi } from './lib/api';
 import { supabase } from './lib/supabase';
 
 const CONSENT_VERSION = 'ph-national-id-v2';
 const STORAGE_BUCKET = 'identity-verification';
-const CAPTURE_PROMPTS = [
-  'Look straight at the camera.',
-  'Blink once, then keep your eyes open.',
-  'Move slightly farther away.',
-  'Move a little closer to the camera.',
-  'Turn your face slightly left, then right.',
-  'Return to center and hold still for the final photo.',
-];
+const FACE_GUIDE = { width: 0.66, height: 0.68, centerY: 0.46 };
+const FACE_REQUIREMENTS = {
+  singleFace: true,
+  guide: FACE_GUIDE,
+  minFaceSize: 0.16,
+  maxFaceSize: 0.74,
+  minBrightness: 0.18,
+  maxBrightness: 0.97,
+  minSharpness: 18,
+};
+const AUTO_CAPTURE_REQUIREMENTS = {
+  ...FACE_REQUIREMENTS,
+  eyesOpen: true,
+  lookingForward: true,
+};
+const LIVENESS_PROMPTS = {
+  POSITION_FACE: 'Look straight at the camera',
+  HOLD_STILL: 'Hold still',
+  TURN_LEFT: 'Turn left',
+  TURN_RIGHT: 'Turn right',
+  LOOK_UP: 'Look up',
+  LOOK_DOWN: 'Look down',
+  TILT_LEFT: 'Tilt your head left',
+  TILT_RIGHT: 'Tilt your head right',
+  BLINK: 'Blink once',
+  SMILE: 'Smile',
+  NOD: 'Nod your head',
+  SHAKE: 'Shake your head',
+  RETURN_TO_CENTER: 'Return to center',
+  PASSED: 'Face check complete',
+  FAILED: 'This step needs another try',
+};
+const LIVENESS_FAILURES = {
+  TIMEOUT: 'That step took too long. Try that step again.',
+  NO_FACE: 'No face found. Center your face in the oval, then retry.',
+  FACE_LOST: 'Face not found. Center your face and try again.',
+  MULTIPLE_FACES: 'Only one face please.',
+  FACE_CHANGED: 'The detected face changed. Restart the face check.',
+};
+const ACTION_DETAILS = {
+  'turn-left': { title: 'Turn left', hint: 'Slowly turn your head to your left.', icon: '↶' },
+  'turn-right': { title: 'Turn right', hint: 'Slowly turn your head to your right.', icon: '↷' },
+  'look-up': { title: 'Look up', hint: 'Lift your chin and look up.', icon: '↑' },
+  'look-down': { title: 'Look down', hint: 'Lower your chin and look down.', icon: '↓' },
+  'tilt-left': { title: 'Tilt left', hint: 'Tilt your head toward your left shoulder.', icon: '↙' },
+  blink: { title: 'Blink once', hint: 'Close and reopen your eyes.', icon: '◉' },
+  smile: { title: 'Smile', hint: 'Show a natural smile.', icon: '☺' },
+};
+const GUIDANCE_MESSAGES = {
+  NO_FACE: 'Find your face',
+  MULTIPLE_FACES: 'Only one face please',
+  TOO_DARK: 'Too dark',
+  TOO_BRIGHT: 'Reduce glare',
+  MOVE_CLOSER: 'Move closer',
+  MOVE_FARTHER: 'Move farther away',
+  FACE_TOO_SMALL: 'Move closer',
+  FACE_TOO_LARGE: 'Move farther away',
+  MOVE_LEFT: 'Move left',
+  MOVE_RIGHT: 'Move right',
+  MOVE_UP: 'Move up',
+  MOVE_DOWN: 'Move down',
+  LOOK_FORWARD: 'Look straight',
+  LOOK_LEFT: 'Look straight',
+  LOOK_RIGHT: 'Look straight',
+  OPEN_EYES: 'Open your eyes',
+  TOO_BLURRY: 'Hold still',
+  HOLD_STILL: 'Hold still',
+  REQUIREMENT_NOT_MET: 'Adjust your position',
+  READY: 'Face aligned',
+};
+const CAPTURE_COUNTDOWN_MS = 1000;
 
-const FACE_GUIDE = { width: 0.72, height: 0.48, centerY: 0.45 };
-const HOLD_MS = 1800;
+function shuffledChallengeSteps() {
+  const steps = ['turn-left', 'turn-right', 'look-up', 'blink'];
+  steps.push(getCapabilities().smileProbability ? 'smile' : 'tilt-left');
+  for (let index = steps.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [steps[index], steps[swapIndex]] = [steps[swapIndex], steps[index]];
+  }
+  return steps;
+}
 
-function GuidedFaceCamera({ cameraFrameHeight, onCapture, onError, onReady }) {
+function GuidedFaceCamera({ onCapture, onError, onReady, onClose }) {
   const camera = useFaceCamera();
-  const [step, setStep] = useState(0);
-  const [guidance, setGuidance] = useState('Starting face scan...');
-  const stepStartedAt = useRef(null);
-  const baselineScale = useRef(null);
-  const leftPassed = useRef(false);
-  const rightPassed = useRef(false);
-  const captureStarted = useRef(false);
-  const blink = useBlinkDetection({ camera });
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const [challengeSteps, setChallengeSteps] = useState(shuffledChallengeSteps);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState(() => new Set());
+  const completedStepsRef = useRef(new Set());
+  const [positionComplete, setPositionComplete] = useState(false);
+  const positionCompleteRef = useRef(false);
+  const [challengeFailure, setChallengeFailure] = useState(null);
+  const [faceChanged, setFaceChanged] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  const [clock, setClock] = useState(Date.now());
+  const activeStep = challengeSteps[currentStepIndex] || challengeSteps[0];
+  const stepCopy = ACTION_DETAILS[activeStep];
+  const challenge = useLivenessChallenge({
+    camera,
+    steps: [activeStep],
+    randomize: false,
+    positioningMs: 650,
+    holdMs: 350,
+    stepTimeout: 10000,
+    faceLostTimeout: 1000,
+    prompts: LIVENESS_PROMPTS,
+    haptics: false,
+    onPass: () => {
+      if (faceChanged) return;
+      positionCompleteRef.current = true;
+      setPositionComplete(true);
+      setChallengeFailure(null);
+      const nextCompleted = new Set(completedStepsRef.current);
+      nextCompleted.add(activeStep);
+      completedStepsRef.current = nextCompleted;
+      setCompletedSteps(nextCompleted);
+      const nextIndex = challengeSteps.findIndex((step) => !nextCompleted.has(step));
+      if (nextIndex !== -1) setCurrentStepIndex(nextIndex);
+    },
+    onFail: (failure) => {
+      setChallengeFailure(failure);
+      if (failure === 'FACE_CHANGED') setFaceChanged(true);
+    },
+  });
+  const validation = useFaceValidation(FACE_REQUIREMENTS, {
+    camera,
+    guidanceDelay: 160,
+  });
+  const livenessComplete = positionComplete && completedSteps.size === challengeSteps.length;
+  const autoCapture = useFaceAutoCapture({
+    camera,
+    enabled: livenessComplete && !challengeFailure && !faceChanged,
+    requirements: AUTO_CAPTURE_REQUIREMENTS,
+    stableFor: 300,
+    countdown: CAPTURE_COUNTDOWN_MS,
+    haptics: false,
+    photo: { quality: 0.85 },
+    onCapture: (result) => onCapture(result.photo),
+    onCaptureError: onError,
+  });
+  const countdownActive = autoCapture.state.status === 'COUNTDOWN';
+  const countdownProgress = countdownActive
+    ? Math.max(0, Math.min(1, 1 - ((autoCapture.state.countdownEndsAt || clock) - clock) / CAPTURE_COUNTDOWN_MS))
+    : 0;
+  const canCaptureManually = livenessComplete
+    && ['READY', 'COUNTDOWN'].includes(autoCapture.state.status)
+    && !challengeFailure
+    && !faceChanged;
+  const displayedStepIndex = positionComplete ? currentStepIndex + 2 : 1;
+  const isPositioning = !positionComplete
+    || (challenge.phase === 'positioning' && completedSteps.size === 0);
+  const currentTitle = livenessComplete
+    ? 'Face check complete'
+    : isPositioning
+      ? 'Look straight at the camera'
+      : stepCopy.title;
+  const currentHint = livenessComplete
+    ? 'Hold still. Your photo will be captured automatically.'
+    : isPositioning
+      ? 'Keep one face inside the oval and hold still.'
+      : stepCopy.hint;
+  const guidanceStatus = validation.status;
+  const guidanceMessage = challengeFailure
+    ? LIVENESS_FAILURES[challengeFailure]
+    : faceChanged
+      ? LIVENESS_FAILURES.FACE_CHANGED
+      : guidanceStatus && guidanceStatus !== 'READY'
+        ? GUIDANCE_MESSAGES[guidanceStatus]
+        : livenessComplete
+          ? countdownActive ? 'Hold still, capturing' : 'Face aligned'
+          : challenge.text;
+  const guidanceHint = guidanceStatus === 'NO_FACE'
+    ? challengeFailure === 'NO_FACE'
+      ? 'Center your face. If it is not detected, try removing a mask or glasses.'
+      : 'Move into the oval. If your face is not detected, try removing a mask or glasses.'
+    : guidanceStatus === 'TOO_DARK'
+      ? 'Move to a brighter spot and face the light.'
+      : challengeFailure
+        ? challengeFailure === 'TIMEOUT'
+          ? 'You can retry just this step or restart the face check.'
+          : 'Adjust your position, then retry or restart the face check.'
+        : 'Follow the prompt and keep your face inside the oval.';
+  const safeTop = insets.top;
+  const safeBottom = insets.bottom;
+  const previewMaxHeight = Math.max(190, height - safeTop - safeBottom - 286);
+  const previewWidth = Math.max(180, Math.min(width - 32, previewMaxHeight * 0.75));
+  const previewHeight = previewWidth / 0.75;
+  const centerX = previewWidth / 2;
+  const centerY = previewHeight * FACE_GUIDE.centerY;
+  const radiusX = (previewWidth * FACE_GUIDE.width) / 2;
+  const radiusY = (previewHeight * FACE_GUIDE.height) / 2;
+  const ellipsePerimeter = 2 * Math.PI * Math.sqrt((radiusX ** 2 + radiusY ** 2) / 2);
 
-  const finishStep = (nextStep) => {
-    stepStartedAt.current = null;
-    setStep(nextStep);
+  useEffect(() => {
+    challenge.start();
+  }, [activeStep, retryToken]);
+
+  useEffect(() => {
+    if (challenge.phase === 'challenge' && !positionCompleteRef.current) {
+      positionCompleteRef.current = true;
+      setPositionComplete(true);
+    }
+  }, [challenge.phase]);
+
+  useEffect(() => {
+    if (!countdownActive) return undefined;
+    const timer = setInterval(() => setClock(Date.now()), 80);
+    return () => clearInterval(timer);
+  }, [countdownActive]);
+
+  useEffect(() => {
+    if (guidanceStatus !== 'NO_FACE' || challengeFailure || livenessComplete) return undefined;
+    const timer = setTimeout(() => {
+      setChallengeFailure((current) => current || 'NO_FACE');
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [guidanceStatus, challengeFailure, livenessComplete, activeStep, retryToken]);
+
+  useEffect(() => {
+    if (challengeFailure === 'FACE_CHANGED') setFaceChanged(true);
+  }, [challengeFailure]);
+
+  const retryCurrentStep = () => {
+    setChallengeFailure(null);
+    setRetryToken((current) => current + 1);
   };
 
-  useFaceFrames((frame) => {
-    if (captureStarted.current) return;
-    if (frame.faces.length !== 1) {
-      stepStartedAt.current = null;
-      setGuidance(frame.faces.length > 1 ? 'More than one face detected' : 'Center one face in the guide');
-      return;
-    }
+  const retryCompletedStep = (stepIndex) => {
+    const step = challengeSteps[stepIndex];
+    if (!step || !completedStepsRef.current.has(step)) return;
+    const nextCompleted = new Set(completedStepsRef.current);
+    nextCompleted.delete(step);
+    completedStepsRef.current = nextCompleted;
+    setCompletedSteps(nextCompleted);
+    setChallengeFailure(null);
+    setCurrentStepIndex(stepIndex);
+    setRetryToken((current) => current + 1);
+  };
 
-    const face = frame.faces[0];
-    const scale = face.headPose?.scale || face.normalizedBounds.width;
-    const direction = face.headPose?.direction;
-    const centered = Math.abs((face.normalizedBounds.x + face.normalizedBounds.width / 2) - 0.5) <= 0.14;
-    const straight = centered && Math.abs(face.headPose?.yaw || 0) <= 15 && Math.abs(face.headPose?.pitch || 0) <= 15;
-    let valid = false;
-    let message = CAPTURE_PROMPTS[step];
+  const restartChallenge = () => {
+    const nextSteps = shuffledChallengeSteps();
+    completedStepsRef.current = new Set();
+    positionCompleteRef.current = false;
+    setChallengeSteps(nextSteps);
+    setCompletedSteps(new Set());
+    setPositionComplete(false);
+    setCurrentStepIndex(0);
+    setChallengeFailure(null);
+    setFaceChanged(false);
+    setRetryToken((current) => current + 1);
+  };
 
-    if (step === 0) {
-      valid = straight;
-      message = valid ? 'Pose detected — hold still' : 'Look straight and center your face';
-      if (valid && baselineScale.current === null) baselineScale.current = scale;
-    } else if (step === 1) {
-      valid = blink.count > 0;
-      message = valid ? 'Blink detected — hold still and keep eyes open' : 'Blink once';
-    } else if (step === 2) {
-      valid = baselineScale.current !== null && scale <= baselineScale.current * 0.9;
-      message = valid ? 'Farther position detected — hold still' : 'Move farther away';
-    } else if (step === 3) {
-      valid = baselineScale.current !== null && scale >= baselineScale.current * 1.12;
-      message = valid ? 'Closer position detected — hold still' : 'Move closer';
-    } else if (step === 4) {
-      if (direction === 'left') leftPassed.current = true;
-      if (direction === 'right') rightPassed.current = true;
-      valid = leftPassed.current && rightPassed.current;
-      message = valid ? 'Left and right turns detected — return to center' : 'Turn left, then right';
-    } else {
-      valid = straight;
-      message = valid ? 'Pose detected — hold still for the photo' : 'Return to center';
-    }
+  const onManualCapture = () => {
+    if (canCaptureManually) autoCapture.capture();
+  };
 
-    setGuidance(message);
-    if (!valid) {
-      stepStartedAt.current = null;
-      return;
-    }
-    if (stepStartedAt.current === null) stepStartedAt.current = frame.timestamp;
-    if (frame.timestamp - stepStartedAt.current < HOLD_MS) return;
-
-    if (step >= CAPTURE_PROMPTS.length - 1) {
-      captureStarted.current = true;
-      setGuidance('Capturing your verified face photo...');
-      camera.takePhoto({ quality: 0.8 })
-        .then(onCapture)
-        .catch(onError);
-      return;
-    }
-    finishStep(step + 1);
-  }, camera);
+  const livenessProgress = challenge.phase === 'challenge' ? challenge.stepProgress : 0;
+  const guideProgress = countdownActive ? countdownProgress : livenessProgress;
+  const guideReady = guidanceStatus === 'READY' || countdownActive || autoCapture.state.status === 'READY';
+  const hasCompletedPosition = positionComplete || completedSteps.size > 0;
+  const topPadding = insets.top;
 
   return (
-    <View style={[styles.cameraFrame, { height: cameraFrameHeight }]}>
-      <FaceCamera
-        camera={camera}
-        style={styles.camera}
-        facing="front"
-        active
-        inferenceFps={12}
-        detection={{ performanceMode: 'balanced', tracking: true, classification: true }}
-        onCameraReady={onReady}
-        onCameraError={onError}
-      />
-      <View pointerEvents="none" style={styles.cameraOverlay}>
-        <View style={styles.faceGuide} />
-        <View style={styles.overlayPanel}>
-          <View style={styles.captureProgress}>
-            {CAPTURE_PROMPTS.map((prompt, index) => (
-              <View key={prompt} style={[
-                styles.captureProgressSegment,
-                index < step && styles.captureProgressComplete,
-                index === step && styles.captureProgressActive,
-              ]} />
-            ))}
-          </View>
-          <Text style={styles.captureStep}>STEP {step + 1} OF {CAPTURE_PROMPTS.length}</Text>
-          <Text style={styles.captureInstruction}>{guidance}</Text>
+    <Modal
+      visible
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
+      <StatusBar hidden />
+      <SafeAreaView style={[styles.captureScreen, { paddingTop: topPadding }]} edges={['bottom']}>
+        <View style={styles.captureHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel face capture"
+            style={styles.captureClose}
+            onPress={onClose}
+          >
+            <Text style={styles.captureCloseText}>×</Text>
+          </Pressable>
+          <Text numberOfLines={2} style={styles.captureHeaderTitle}>Step 2: Guided face capture</Text>
+          <View style={styles.captureHeaderSpacer} />
         </View>
-      </View>
-    </View>
+        <View style={styles.captureProgressRow}>
+          {Array.from({ length: 6 }, (_, index) => {
+            const complete = index === 0
+              ? hasCompletedPosition
+              : completedSteps.has(challengeSteps[index - 1]);
+            const active = !livenessComplete && index === displayedStepIndex - 1;
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.captureProgressSegment,
+                  complete && styles.captureProgressComplete,
+                  active && styles.captureProgressActive,
+                ]}
+              />
+            );
+          })}
+        </View>
+        <View style={styles.capturePreviewSlot}>
+          <View style={[styles.capturePreview, { width: previewWidth, height: previewHeight }]}>
+            <FaceCamera
+              camera={camera}
+              style={StyleSheet.absoluteFillObject}
+              facing="front"
+              active
+              inferenceFps={12}
+              detection={{
+                performanceMode: 'fast',
+                tracking: true,
+                classification: true,
+                contours: Platform.OS === 'ios',
+              }}
+              frameStats
+              resizeMode="cover"
+              onCameraReady={onReady}
+              onCameraError={onError}
+            />
+            <Svg
+              pointerEvents="none"
+              style={StyleSheet.absoluteFill}
+              viewBox={`0 0 ${previewWidth} ${previewHeight}`}
+              preserveAspectRatio="none"
+            >
+              <Path
+                d={`M0 0 H${previewWidth} V${previewHeight} H0 Z M${centerX} ${centerY - radiusY} a${radiusX} ${radiusY} 0 1 0 0 ${radiusY * 2} a${radiusX} ${radiusY} 0 1 0 0 ${-radiusY * 2} Z`}
+                fill="rgba(0, 0, 0, 0.52)"
+                fillRule="evenodd"
+              />
+              <Ellipse
+                cx={centerX}
+                cy={centerY}
+                rx={radiusX}
+                ry={radiusY}
+                fill="transparent"
+                stroke={guideReady ? '#39D18B' : '#FFFFFF'}
+                strokeWidth={3}
+              />
+              {guideProgress > 0 ? (
+                <Ellipse
+                  cx={centerX}
+                  cy={centerY}
+                  rx={radiusX}
+                  ry={radiusY}
+                  fill="transparent"
+                  stroke="#39D18B"
+                  strokeWidth={4}
+                  strokeLinecap="round"
+                  strokeDasharray={`${ellipsePerimeter}`}
+                  strokeDashoffset={ellipsePerimeter * (1 - guideProgress)}
+                  transform={`rotate(-90 ${centerX} ${centerY})`}
+                />
+              ) : null}
+            </Svg>
+          </View>
+        </View>
+        <View style={styles.capturePanel}>
+          <View style={styles.captureFeedback}>
+            <View style={[styles.captureFeedbackDot, guideReady && styles.captureFeedbackDotReady]} />
+            <Text style={styles.captureFeedbackText}>{guidanceMessage || 'Starting camera...'}</Text>
+          </View>
+          {guidanceHint ? <Text style={styles.captureFeedbackHint}>{guidanceHint}</Text> : null}
+          <Text style={styles.captureStepLabel}>STEP {livenessComplete ? 6 : displayedStepIndex} OF 6</Text>
+          <View style={styles.captureActionRow}>
+            <View style={styles.captureActionIcon}>
+              <Text style={styles.captureActionIconText}>
+                {livenessComplete ? '✓' : isPositioning ? '◎' : stepCopy.icon}
+              </Text>
+            </View>
+            <View style={styles.captureActionCopy}>
+              <Text style={styles.captureActionTitle}>{currentTitle}</Text>
+              <Text style={styles.captureActionHint}>{currentHint}</Text>
+            </View>
+          </View>
+          <View style={styles.captureStepList}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Look straight at the camera"
+              accessibilityState={{ checked: hasCompletedPosition }}
+              disabled
+              style={[
+                styles.captureStepMarker,
+                hasCompletedPosition && styles.captureStepMarkerComplete,
+                !hasCompletedPosition && styles.captureStepMarkerActive,
+              ]}
+            >
+              <Text style={[styles.captureStepMarkerText, hasCompletedPosition && styles.captureStepMarkerTextActive]}>
+                {hasCompletedPosition ? '✓' : '1'}
+              </Text>
+            </Pressable>
+            {challengeSteps.map((step, index) => {
+              const isComplete = completedSteps.has(step);
+              const isActive = !livenessComplete && index === currentStepIndex;
+              return (
+                <Pressable
+                  key={step}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${ACTION_DETAILS[step].title}${isComplete ? ', completed. Tap to retry.' : ''}`}
+                  accessibilityState={{ checked: isComplete, disabled: !isComplete }}
+                  disabled={!isComplete || faceChanged}
+                  onPress={() => retryCompletedStep(index)}
+                  style={[
+                    styles.captureStepMarker,
+                    isComplete && styles.captureStepMarkerComplete,
+                    isActive && styles.captureStepMarkerActive,
+                  ]}
+                >
+                  <Text style={[
+                    styles.captureStepMarkerText,
+                    (isComplete || isActive) && styles.captureStepMarkerTextActive,
+                  ]}>
+                    {isComplete ? '✓' : index + 2}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {challengeFailure || faceChanged ? (
+            <Pressable
+              accessibilityRole="button"
+              style={styles.captureRetryButton}
+              onPress={faceChanged ? restartChallenge : retryCurrentStep}
+            >
+              <Text style={styles.captureRetryText}>
+                {faceChanged ? 'Restart face check' : 'Retry this step'}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canCaptureManually }}
+            disabled={!canCaptureManually}
+            onPress={onManualCapture}
+            style={[styles.captureButton, !canCaptureManually && styles.captureButtonDisabled]}
+          >
+            <Text style={styles.captureButtonText}>Capture now</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -218,7 +555,6 @@ async function uploadPrivateImage(uri, path, base64 = null) {
 }
 
 export default function IdentityVerification({ user }) {
-  const { height: windowHeight } = useWindowDimensions();
   const [screen, setScreen] = useState('consent');
   const [record, setRecord] = useState(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
@@ -230,7 +566,6 @@ export default function IdentityVerification({ user }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [captureStatus, setCaptureStatus] = useState('');
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const cameraFrameHeight = Math.min(Math.max(windowHeight * 0.62, 440), 620);
 
   const applyRecord = (next) => {
     setRecord(next);
@@ -415,6 +750,7 @@ export default function IdentityVerification({ user }) {
   const runFaceMatch = async () => {
     if (!record) return;
     setBusy(true);
+    setCaptureStatus('Checking your face against the ID photo. This may take a moment.');
     setErrorMessage('');
     try {
       const matched = await requestApi(`/api/identity-verifications/${record.id}/match`, { method: 'POST' });
@@ -436,6 +772,7 @@ export default function IdentityVerification({ user }) {
       setErrorMessage(message);
     } finally {
       setBusy(false);
+      setCaptureStatus('');
     }
   };
 
@@ -444,11 +781,11 @@ export default function IdentityVerification({ user }) {
       try {
         const permission = await requestCameraPermission();
         if (!permission.granted) {
-          setErrorMessage('Camera access is required for face registration.');
+          setErrorMessage('Camera permission was denied. Allow camera access in your device settings, then try again.');
           return;
         }
       } catch (error) {
-        setErrorMessage(error.message || 'Unable to request camera access.');
+        setErrorMessage(error.message || 'Unable to request camera access. Check camera permission in your device settings.');
         return;
       }
     }
@@ -540,7 +877,12 @@ export default function IdentityVerification({ user }) {
 
       {errorMessage ? <Text accessibilityRole="alert" style={styles.error}>{errorMessage}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-      {busy ? <View style={styles.busy}><ActivityIndicator color="#7b4b35" /><Text style={styles.muted}>Processing securely...</Text></View> : null}
+      {busy ? (
+        <View style={styles.busy}>
+          <ActivityIndicator color="#7b4b35" />
+          <Text style={styles.muted}>{captureStatus || 'Processing securely...'}</Text>
+        </View>
+      ) : null}
 
       {screen === 'consent' && (
         <View style={styles.card}>
@@ -582,35 +924,29 @@ export default function IdentityVerification({ user }) {
               <Text style={styles.body}>Your face image is ready. Retry the comparison or capture a new guided sequence.</Text>
               <PrimaryButton title="Retry face comparison" disabled={busy} onPress={runFaceMatch} />
             </>
-          ) : cameraActive ? (
-            <>
-              <GuidedFaceCamera
-                cameraFrameHeight={cameraFrameHeight}
-                onReady={() => {
-                  setCaptureStatus('Camera ready. Follow the live instructions.');
-                }}
-                onCapture={(photo) => {
-                  setCameraActive(false);
-                  setCaptureStatus('');
-                  uploadAndMatch(photo.uri);
-                }}
-                onError={(error) => {
-                  setCameraActive(false);
-                  setCaptureStatus('');
-                  setErrorMessage(error.message || 'Unable to start face detection. Rebuild the native app and try again.');
-                }}
-              />
-              {captureStatus ? <Text style={styles.captureStatus}>{captureStatus}</Text> : null}
-              <Text style={styles.hint}>Keep exactly one face inside the oval. Each instruction is checked from live camera frames and must be held briefly before the next step.</Text>
-              <SecondaryButton title="Cancel capture" disabled={busy} onPress={() => {
-                setCameraActive(false);
-                setCaptureStatus('');
-              }} />
-            </>
           ) : (
             <>
-              <Text style={styles.body}>Look straight, then follow the on-screen prompts to look left and right and move closer and farther. The frontal image is used for comparison.</Text>
+              <Text style={styles.body}>Follow the full-screen face prompts. The camera checks each movement in a randomized order, then captures a clear front-facing photo for comparison.</Text>
               <PrimaryButton title={record?.status === 'face_match_failed' ? 'Retry face capture' : 'Start face capture'} disabled={busy} onPress={captureGuidedFace} />
+              {cameraActive ? (
+                <GuidedFaceCamera
+                  onReady={() => setCaptureStatus('')}
+                  onCapture={(photo) => {
+                    setCameraActive(false);
+                    setCaptureStatus('');
+                    uploadAndMatch(photo.uri);
+                  }}
+                  onError={(error) => {
+                    setCameraActive(false);
+                    setCaptureStatus('');
+                    setErrorMessage(error?.message || 'The camera could not start. Check camera permission, then retry.');
+                  }}
+                  onClose={() => {
+                    setCameraActive(false);
+                    setCaptureStatus('');
+                  }}
+                />
+              ) : null}
             </>
           )}
         </View>
@@ -738,18 +1074,42 @@ const styles = StyleSheet.create({
   notice: { color: '#315f42', backgroundColor: '#eef7f0', borderColor: '#d3e8d8', borderWidth: 1, borderRadius: 9, padding: 12, marginBottom: 12, lineHeight: 19 },
   busy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   hint: { color: '#806f64', fontSize: 13, lineHeight: 19, marginVertical: 8 },
-  captureStatus: { color: '#315f42', fontSize: 13, fontWeight: '700', marginTop: 4 },
-  cameraFrame: { height: 480, borderRadius: 12, overflow: 'hidden', backgroundColor: '#251d19', marginVertical: 8 },
-  camera: { flex: 1 },
-  cameraOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-start', padding: 10 },
-  overlayPanel: { backgroundColor: 'rgba(35, 27, 23, 0.62)', borderRadius: 8, padding: 10 },
-  faceGuide: { position: 'absolute', alignSelf: 'center', top: '21%', width: '62%', height: '58%', borderWidth: 3, borderColor: 'rgba(255, 255, 255, 0.8)', borderRadius: 999 },
-  captureProgress: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  captureProgressSegment: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255, 255, 255, 0.45)' },
-  captureProgressComplete: { backgroundColor: '#b7d889' },
-  captureProgressActive: { backgroundColor: '#ffb28e' },
-  captureStep: { color: '#fff7f2', fontSize: 11, fontWeight: '800', letterSpacing: 0.8, marginBottom: 3 },
-  captureInstruction: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 0 },
+  captureScreen: { flex: 1, backgroundColor: '#101316', paddingHorizontal: 18 },
+  captureHeader: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  captureClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#24292d', alignItems: 'center', justifyContent: 'center' },
+  captureCloseText: { color: '#fff', fontSize: 26, lineHeight: 30, fontWeight: '400' },
+  captureHeaderTitle: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  captureHeaderSpacer: { width: 40, height: 40 },
+  captureProgressRow: { flexDirection: 'row', gap: 6, marginTop: 10, marginBottom: 10 },
+  captureProgressSegment: { flex: 1, height: 4, borderRadius: 2, backgroundColor: '#42474b' },
+  captureProgressComplete: { backgroundColor: '#39d18b' },
+  captureProgressActive: { backgroundColor: '#fff' },
+  capturePreviewSlot: { flex: 1, minHeight: 190, alignItems: 'center', justifyContent: 'center' },
+  capturePreview: { overflow: 'hidden', backgroundColor: '#202428' },
+  capturePanel: { paddingTop: 8, paddingBottom: 12 },
+  captureFeedback: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 22 },
+  captureFeedbackDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f2b34b' },
+  captureFeedbackDotReady: { backgroundColor: '#39d18b' },
+  captureFeedbackText: { color: '#fff', fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  captureFeedbackHint: { color: '#aeb5b9', fontSize: 11, lineHeight: 15, marginTop: 2 },
+  captureStepLabel: { color: '#9da5aa', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 8 },
+  captureActionRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 6, minHeight: 46 },
+  captureActionIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#24292d', alignItems: 'center', justifyContent: 'center' },
+  captureActionIconText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  captureActionCopy: { flex: 1 },
+  captureActionTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  captureActionHint: { color: '#aeb5b9', fontSize: 11, lineHeight: 15, marginTop: 2 },
+  captureStepList: { flexDirection: 'row', justifyContent: 'center', gap: 9, marginTop: 8, marginBottom: 5 },
+  captureStepMarker: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: '#4b5155', alignItems: 'center', justifyContent: 'center' },
+  captureStepMarkerComplete: { borderColor: '#39d18b', backgroundColor: 'rgba(57, 209, 139, 0.14)' },
+  captureStepMarkerActive: { borderColor: '#fff' },
+  captureStepMarkerText: { color: '#9da5aa', fontSize: 11, fontWeight: '700' },
+  captureStepMarkerTextActive: { color: '#fff' },
+  captureRetryButton: { alignSelf: 'center', paddingVertical: 7, paddingHorizontal: 12 },
+  captureRetryText: { color: '#9be6c2', fontSize: 12, fontWeight: '700' },
+  captureButton: { minHeight: 46, borderRadius: 12, backgroundColor: '#39d18b', alignItems: 'center', justifyContent: 'center', marginTop: 5 },
+  captureButtonDisabled: { backgroundColor: '#3a4245' },
+  captureButtonText: { color: '#111714', fontSize: 14, fontWeight: '800' },
   field: { marginTop: 8 },
   fieldLabel: { color: '#69584c', fontSize: 12, fontWeight: '700', marginBottom: 6 },
   input: { borderWidth: 1, borderColor: '#d9cec6', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, color: '#33241e', backgroundColor: '#fff', minHeight: 44 },
