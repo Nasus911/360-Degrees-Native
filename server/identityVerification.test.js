@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   canReviewVerification,
   canSubmitVerification,
+  hasRecognizedIdentityField,
   isVerificationObjectPath,
   mapProcessorErrorStatus,
   publicVerification,
@@ -14,14 +15,16 @@ test('processor authentication errors do not look like customer session errors',
   assert.equal(mapProcessorErrorStatus(503), 503);
 });
 
-test('personal fields stay hidden until face matching passes', () => {
+test('extracted fields are available after scanning while submission still requires a face match', () => {
   const row = {
     id: 'verification-1',
     status: 'id_scan_passed',
     extracted_fields: { full_name: 'Sample Person' },
   };
-  assert.equal(publicVerification(row).fields, null);
+  assert.equal(publicVerification(row).fields.full_name, 'Sample Person');
+  assert.equal(publicVerification({ ...row, status: 'id_uploaded' }).fields, null);
   assert.equal(publicVerification({ ...row, status: 'face_match_passed' }).fields.full_name, 'Sample Person');
+  assert.equal(canSubmitVerification(row.status), false);
   assert.equal(canReviewVerification('submitted'), true);
 });
 
@@ -31,6 +34,13 @@ test('submission is blocked until both verification checks pass', () => {
   assert.equal(canSubmitVerification('face_match_failed'), false);
   assert.equal(canSubmitVerification('face_match_passed'), true);
   assert.equal(canSubmitVerification('submitted'), false);
+});
+
+test('partial OCR output is usable only when it contains readable identity text', () => {
+  assert.equal(hasRecognizedIdentityField({ full_name: 'Sample Person' }), true);
+  assert.equal(hasRecognizedIdentityField({ full_name: '  ', id_number: null }), false);
+  assert.equal(hasRecognizedIdentityField(null), false);
+  assert.equal(hasRecognizedIdentityField(['Sample Person']), false);
 });
 
 test('storage paths are scoped to the current user and verification', () => {

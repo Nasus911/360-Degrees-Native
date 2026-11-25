@@ -148,6 +148,7 @@ class NationalIdParserTests(unittest.TestCase):
 
     def test_complete_primary_ocr_skips_fallback_and_pcn_passes(self):
         image = np.full((800, 1200, 3), 255, dtype=np.uint8)
+        quality_warning = "The image looks blurry. Retake it with the ID in focus."
         pytesseract = SimpleNamespace(
             image_to_string=Mock(return_value=(
                 "FULL NAME: SAMPLE PERSON\n"
@@ -158,13 +159,30 @@ class NationalIdParserTests(unittest.TestCase):
         )
         with patch.dict(sys.modules, {"pytesseract": pytesseract}):
             with patch("identity.configure_tesseract"):
-                with patch("identity.image_quality_issues", return_value=[]):
+                with patch("identity.image_quality_issues", return_value=[quality_warning]):
                     with patch("identity._read_pcn_from_image") as read_pcn:
                         result = extract_id_fields(image)
 
         self.assertTrue(result["passed"])
+        self.assertIn(quality_warning, result["issues"])
         pytesseract.image_to_string.assert_called_once()
         read_pcn.assert_not_called()
+
+    def test_quality_warning_does_not_discard_partially_read_fields(self):
+        image = np.full((800, 1200, 3), 255, dtype=np.uint8)
+        pytesseract = SimpleNamespace(
+            image_to_string=Mock(return_value="FULL NAME: SAMPLE PERSON")
+        )
+        quality_warning = "The image looks blurry. Retake it with the ID in focus."
+        with patch.dict(sys.modules, {"pytesseract": pytesseract}):
+            with patch("identity.configure_tesseract"):
+                with patch("identity.image_quality_issues", return_value=[quality_warning]):
+                    with patch("identity._read_pcn_from_image", return_value=None):
+                        result = extract_id_fields(image)
+
+        self.assertEqual(result["fields"]["full_name"], "SAMPLE PERSON")
+        self.assertFalse(result["passed"])
+        self.assertIn(quality_warning, result["issues"])
 
     def test_large_face_capture_is_downscaled_and_coordinates_restored(self):
         class FakeDetector:

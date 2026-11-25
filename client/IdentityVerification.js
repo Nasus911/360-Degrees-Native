@@ -141,8 +141,8 @@ function GuidedFaceCamera({ cameraFrameHeight, onCapture, onError, onReady }) {
 
 function screenForStatus(status) {
   if (status === 'submitted') return 'done';
-  if (status === 'face_match_passed') return 'review';
-  if (['id_scan_passed', 'face_uploaded', 'face_match_failed'].includes(status)) return 'face';
+  if (['id_scan_passed', 'face_match_passed'].includes(status)) return 'review';
+  if (['face_uploaded', 'face_match_failed'].includes(status)) return 'face';
   return 'document';
 }
 
@@ -245,7 +245,9 @@ export default function IdentityVerification({ user }) {
       return;
     }
     setScreen(screenForStatus(next.status));
-    if (next.fields) setDraftFields(next.fields);
+    if (next.fields) {
+      setDraftFields((current) => current ? { ...next.fields, ...current } : next.fields);
+    }
   };
 
   const refreshCurrent = async () => {
@@ -319,7 +321,7 @@ export default function IdentityVerification({ user }) {
       if (scanned.status === 'id_scan_failed') {
         setErrorMessage((scanned.scanIssues || []).join(' ') || 'The ID could not be read. Upload a clearer image and try again.');
       } else {
-        setNotice('ID scan passed. Continue to guided face capture.');
+        setNotice('Text extracted. Review the fields, correct any mistakes, and continue to guided face capture.');
       }
     } catch (error) {
       let message = error.message || 'Unable to scan the ID.';
@@ -354,6 +356,7 @@ export default function IdentityVerification({ user }) {
     if (selection.canceled || !selection.assets?.[0]) return;
 
     const asset = selection.assets[0];
+    setDraftFields(null);
     const extension = imageExtension(asset);
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const path = `${user.id}/${record.id}/id-${suffix}.${extension}`;
@@ -521,6 +524,7 @@ export default function IdentityVerification({ user }) {
   const setField = (name, value) => {
     setDraftFields((current) => ({ ...current, [name]: value }));
   };
+  const faceMatchPassed = record?.status === 'face_match_passed';
 
   return (
     <View style={styles.container}>
@@ -614,15 +618,36 @@ export default function IdentityVerification({ user }) {
 
       {screen === 'review' && draftFields && (
         <View style={styles.card}>
-          <StepHeading number="3" title="Review your information" />
-          <Text style={styles.body}>The ID scan and face comparison passed. Check and correct the extracted fields before final submission.</Text>
+          <StepHeading
+            number={faceMatchPassed ? '3' : '1'}
+            title={faceMatchPassed ? 'Review your information' : 'Review extracted information'}
+          />
+          <Text style={styles.body}>
+            {faceMatchPassed
+              ? 'The ID scan and face comparison passed. Check and correct the extracted fields before final submission.'
+              : 'Review and correct the extracted fields. Any unreadable fields can be entered manually; face matching is still required before submission.'}
+          </Text>
+          {!faceMatchPassed && record?.scanIssues?.length ? (
+            <Text style={styles.hint}>{record.scanIssues.join(' ')}</Text>
+          ) : null}
           <Field label="Full name" value={draftFields.full_name} onChangeText={(value) => setField('full_name', value)} />
           <Field label="Date of birth (YYYY-MM-DD)" value={draftFields.date_of_birth} onChangeText={(value) => setField('date_of_birth', value)} />
           <Text style={styles.age}>Age: {ageFromDate(draftFields.date_of_birth) ?? 'Check date of birth'}</Text>
           <Field label="Address" value={draftFields.address} onChangeText={(value) => setField('address', value)} multiline />
           <Field label="ID number (PCN)" value={draftFields.id_number} onChangeText={(value) => setField('id_number', value)} />
           <Text style={styles.hint}>Expiration date: Not applicable for this supported ID type.</Text>
-          <PrimaryButton title="Submit reviewed information" disabled={busy} onPress={submitReviewedFields} />
+          {faceMatchPassed ? (
+            <PrimaryButton title="Submit reviewed information" disabled={busy} onPress={submitReviewedFields} />
+          ) : (
+            <PrimaryButton
+              title="Continue to guided face capture"
+              disabled={busy}
+              onPress={() => {
+                setScreen('face');
+                captureGuidedFace();
+              }}
+            />
+          )}
           {record?.cleanupPending ? <Text style={styles.hint}>Secure image deletion is pending. Submission will remain blocked until cleanup succeeds.</Text> : null}
         </View>
       )}
