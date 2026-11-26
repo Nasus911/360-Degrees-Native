@@ -262,7 +262,7 @@ def _read_ocr_candidate(
     image: np.ndarray,
     pytesseract,
     page_segmentation_mode: int,
-) -> tuple[dict, float]:
+) -> tuple[dict, float, dict]:
     data = pytesseract.image_to_data(
         image,
         lang="eng",
@@ -291,16 +291,18 @@ def _read_ocr_candidate(
 
     text = "\n".join(" ".join(lines[key]) for key in sorted(lines))
     mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-    return parse_national_id_text(text), mean_confidence
+    return parse_national_id_text(text), mean_confidence, data
 
 
-def _read_pcn_from_image(image: np.ndarray, pytesseract) -> str | None:
-    data = pytesseract.image_to_data(
-        image,
-        lang="eng",
-        config="--psm 6",
-        output_type=pytesseract.Output.DICT,
-    )
+def _read_pcn_from_image(image: np.ndarray, pytesseract, ocr_data=None) -> str | None:
+    data = ocr_data
+    if data is None:
+        data = pytesseract.image_to_data(
+            image,
+            lang="eng",
+            config="--psm 6",
+            output_type=pytesseract.Output.DICT,
+        )
     lines = {}
     for index, value in enumerate(data["text"]):
         if not value.strip():
@@ -360,11 +362,23 @@ def extract_id_fields(image: np.ndarray) -> dict:
     prepared = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )[1]
-    candidates = [
-        _read_ocr_candidate(candidate_image, pytesseract, page_segmentation_mode)
-        for candidate_image in (prepared, gray)
-        for page_segmentation_mode in (11, 6)
-    ]
+    candidates = []
+    candidate_images = (prepared, gray)
+    for candidate_image in candidate_images:
+        for page_segmentation_mode in (11, 6):
+            parsed, confidence, ocr_data = _read_ocr_candidate(
+                candidate_image, pytesseract, page_segmentation_mode
+            )
+            candidates.append((parsed, confidence, ocr_data, candidate_image))
+        best = max(
+            candidates,
+            key=lambda candidate: (
+                sum(bool(candidate[0]["fields"].get(field)) for field in REQUIRED_FIELDS),
+                candidate[1],
+            ),
+        )
+        if all(best[0]["fields"].get(field) for field in REQUIRED_FIELDS):
+            break
     candidates.sort(
         key=lambda candidate: (
             sum(bool(candidate[0]["fields"].get(field)) for field in REQUIRED_FIELDS),
@@ -373,7 +387,7 @@ def extract_id_fields(image: np.ndarray) -> dict:
         reverse=True,
     )
     parsed = candidates[0][0]
-    for fallback, _ in candidates[1:]:
+    for fallback, _, _, _ in candidates[1:]:
         for field in REQUIRED_FIELDS:
             if not parsed["fields"].get(field) and fallback["fields"].get(field):
                 parsed["fields"][field] = fallback["fields"][field]
@@ -384,7 +398,7 @@ def extract_id_fields(image: np.ndarray) -> dict:
         for field in missing
     ]
     parsed["passed"] = not missing
-    pcn = _read_pcn_from_image(prepared, pytesseract)
+    pcn = _read_pcn_from_image(candidates[0][3], pytesseract, candidates[0][2])
     if pcn:
         parsed["fields"]["id_number"] = pcn
         missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
