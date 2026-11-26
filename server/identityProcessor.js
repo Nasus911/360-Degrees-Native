@@ -2,7 +2,7 @@ const { mapProcessorErrorStatus } = require('./identityVerification');
 
 const PROCESSOR_REQUEST_TIMEOUT_MS = 90_000;
 const PROCESSOR_HEALTH_REQUEST_TIMEOUT_MS = 10_000;
-const PROCESSOR_STARTUP_TIMEOUT_MS = 90_000;
+const PROCESSOR_STARTUP_TIMEOUT_MS = 180_000;
 const PROCESSOR_HEALTH_POLL_INTERVAL_MS = 2_000;
 
 function delay(milliseconds) {

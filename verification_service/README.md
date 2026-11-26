@@ -76,8 +76,9 @@ not add it to the Expo app or EAS public environment variables.
 
 Render Free services sleep when idle. If a scan or match receives Render's
 HTML 502/503 during startup, the Express API now polls the processor health
-endpoint and retries that request once, for up to 90 seconds. Avoiding cold
-starts and the associated wait requires an always-on service plan.
+endpoint for up to 180 seconds and retries that request once. ID scan requests
+allow up to five minutes for the processor to wake and complete OCR. Avoiding
+cold starts and the associated wait requires an always-on service plan.
 
 ## Component choices
 

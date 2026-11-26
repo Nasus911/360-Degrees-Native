@@ -28,6 +28,7 @@ import { supabase } from './lib/supabase';
 
 const CONSENT_VERSION = 'ph-national-id-v2';
 const STORAGE_BUCKET = 'identity-verification';
+const ID_SCAN_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 const FACE_GUIDE = { width: 0.66, height: 0.68, centerY: 0.46 };
 const FACE_REQUIREMENTS = {
   singleFace: true,
@@ -671,7 +672,10 @@ export default function IdentityVerification({ user, onCaptureActiveChange }) {
     setErrorMessage('');
     setNotice('Scanning the uploaded ID. Please keep this screen open...');
     try {
-      const scanned = await requestApi(`/api/identity-verifications/${record.id}/scan`, { method: 'POST' });
+      const scanned = await requestApi(`/api/identity-verifications/${record.id}/scan`, {
+        method: 'POST',
+        timeoutMs: ID_SCAN_REQUEST_TIMEOUT_MS,
+      });
       applyRecord(scanned);
       if (scanned.status === 'id_scan_failed') {
         setErrorMessage((scanned.scanIssues || []).join(' ') || 'The ID could not be read. Upload a clearer image and try again.');
@@ -755,7 +759,10 @@ export default function IdentityVerification({ user, onCaptureActiveChange }) {
     setBusy(true);
     setErrorMessage('');
     try {
-      const scanned = await requestApi(`/api/identity-verifications/${record.id}/scan`, { method: 'POST' });
+      const scanned = await requestApi(`/api/identity-verifications/${record.id}/scan`, {
+        method: 'POST',
+        timeoutMs: ID_SCAN_REQUEST_TIMEOUT_MS,
+      });
       applyRecord(scanned);
       if (scanned.status === 'id_scan_failed') {
         setErrorMessage((scanned.scanIssues || []).join(' ') || 'The ID could not be read. Upload a clearer image and try again.');

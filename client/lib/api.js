@@ -6,15 +6,17 @@ function normalizeApiUrl(url) {
 }
 
 const apiUrl = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
 let networkBackoffUntil = 0;
 let sessionRefreshPromise = null;
 
 async function fetchApi(url, path, options, accessToken) {
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(`${url}${path}`, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
