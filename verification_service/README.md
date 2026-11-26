@@ -97,7 +97,7 @@ The customer UI enforces consent → National ID upload/OCR → immediate editab
 - Identity face capture requires the native Android or iOS app; the web build displays a notice instead of loading the native-only camera module.
 - The OCR parser expects labeled National ID fields and requires name, date of birth, address, and a 12–16 digit PCN. Expiration is not applicable for this supported type.
 - ID images with a longest edge above 2400 pixels are downscaled before OCR to reduce processor memory use.
-- OCR checks both grayscale and Otsu-thresholded images with Tesseract page segmentation modes 11 and 6, ranks parses by required-field completeness and mean OCR confidence, and uses a digit-whitelisted reread of the labeled PCN row to correct a full-image number when possible.
+- OCR first checks the Otsu-thresholded image with Tesseract page segmentation modes 11 and 6. If required fields remain missing, it also checks the grayscale image with both modes, ranks parses by required-field completeness and mean OCR confidence, and reuses the selected OCR boxes for a digit-whitelisted PCN reread when possible.
 - The face score threshold is a demonstration default, not a production decision threshold. Validate it on suitable test data before any real use.
 - Capture prompts are user guidance, not liveness detection. No face embeddings are retained by the service.
 - Tesseract and model files are local prerequisites. The processor health endpoint reports missing components and processing errors are returned explicitly.

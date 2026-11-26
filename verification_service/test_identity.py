@@ -188,7 +188,7 @@ class NationalIdParserTests(unittest.TestCase):
         self.assertIn(quality_warning, result["issues"])
         self.assertEqual(result["fields"]["full_name"], "SAMPLE PERSON")
         self.assertEqual(result["fields"]["id_number"], "1234567890123456")
-        self.assertEqual(pytesseract.image_to_data.call_count, 4)
+        self.assertEqual(pytesseract.image_to_data.call_count, 2)
         read_pcn.assert_called_once()
 
     def test_quality_warning_does_not_discard_partially_read_fields(self):
@@ -279,9 +279,15 @@ class NationalIdParserTests(unittest.TestCase):
             image_to_string=Mock(return_value="1234-5678-9012-3456"),
         )
 
-        result = _read_pcn_from_image(np.zeros((100, 300), dtype=np.uint8), pytesseract)
+        image = np.zeros((100, 300), dtype=np.uint8)
+        result = _read_pcn_from_image(image, pytesseract)
+        reused_result = _read_pcn_from_image(
+            image, pytesseract, pytesseract.image_to_data.return_value
+        )
 
         self.assertEqual(result, "1234567890123456")
+        self.assertEqual(reused_result, "1234567890123456")
+        self.assertEqual(pytesseract.image_to_data.call_count, 1)
         self.assertIn(
             "tessedit_char_whitelist=0123456789-",
             pytesseract.image_to_string.call_args.kwargs["config"],
