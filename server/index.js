@@ -8,10 +8,10 @@ const {
   canSubmitVerification,
   hasRecognizedIdentityField,
   isVerificationObjectPath,
-  mapProcessorErrorStatus,
   publicVerification,
   validateReviewedFields,
 } = require('./identityVerification');
+const { sendImageToProcessor } = require('./identityProcessor');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -162,38 +162,6 @@ async function downloadIdentityImage(path) {
   if (error || !data) throw new Error('Stored identity image is unavailable.');
   if (data.size > MAX_IDENTITY_IMAGE_BYTES) throw new Error('Stored identity image exceeds the size limit.');
   return data;
-}
-
-async function sendImageToProcessor(route, fields) {
-  const form = new FormData();
-  for (const [fieldName, image] of Object.entries(fields)) {
-    const bytes = await image.blob.arrayBuffer();
-    form.append(fieldName, new Blob([bytes], { type: image.blob.type || 'image/jpeg' }), image.filename);
-  }
-  const response = await fetch(`${IDENTITY_PROCESSOR_URL.replace(/\/+$/, '')}${route}`, {
-    method: 'POST',
-    headers: { 'X-Verification-Token': IDENTITY_PROCESSOR_TOKEN },
-    body: form,
-    signal: AbortSignal.timeout(90000),
-  });
-  const contentType = response.headers.get('content-type') || 'unknown content type';
-  const responseText = await response.text();
-  let payload;
-  try {
-    payload = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    const error = new Error(
-      `The identity verification processor returned an invalid response (HTTP ${response.status}; ${contentType}).`,
-    );
-    error.status = 502;
-    throw error;
-  }
-  if (!response.ok) {
-    const error = new Error(typeof payload.detail === 'string' ? payload.detail : 'The identity verification processor could not process the image.');
-    error.status = mapProcessorErrorStatus(response.status);
-    throw error;
-  }
-  return payload;
 }
 
 async function removeIdentityImages(paths) {
@@ -401,9 +369,12 @@ app.post('/api/identity-verifications/:id/scan', async (req, res) => {
     }
 
     const blob = await downloadIdentityImage(verification.id_object_path);
-    const scan = await sendImageToProcessor('/scan-id?document_type=philippine_national_id', {
-      file: { blob, filename: 'national-id.jpg' },
-    });
+    const scan = await sendImageToProcessor(
+      IDENTITY_PROCESSOR_URL,
+      IDENTITY_PROCESSOR_TOKEN,
+      '/scan-id?document_type=philippine_national_id',
+      { file: { blob, filename: 'national-id.jpg' } },
+    );
     const fields = scan.fields && typeof scan.fields === 'object' && !Array.isArray(scan.fields)
       ? scan.fields
       : null;
@@ -494,10 +465,15 @@ app.post('/api/identity-verifications/:id/match', async (req, res) => {
       downloadIdentityImage(verification.id_object_path),
       downloadIdentityImage(verification.selfie_object_path),
     ]);
-    const match = await sendImageToProcessor('/match-face', {
-      id_document: { blob: idBlob, filename: 'national-id.jpg' },
-      selfie: { blob: selfieBlob, filename: 'selfie.jpg' },
-    });
+    const match = await sendImageToProcessor(
+      IDENTITY_PROCESSOR_URL,
+      IDENTITY_PROCESSOR_TOKEN,
+      '/match-face',
+      {
+        id_document: { blob: idBlob, filename: 'national-id.jpg' },
+        selfie: { blob: selfieBlob, filename: 'selfie.jpg' },
+      },
+    );
     const matched = match.status === 'passed' && match.match === true;
     const issues = Array.isArray(match.issues) ? match.issues.slice(0, 8) : [];
     const { data, error } = await supabaseAdmin

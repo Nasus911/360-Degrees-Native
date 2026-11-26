@@ -258,6 +258,42 @@ def parse_national_id_text(text: str) -> dict:
     return {"fields": fields, "issues": issues, "passed": not missing}
 
 
+def _read_ocr_candidate(
+    image: np.ndarray,
+    pytesseract,
+    page_segmentation_mode: int,
+) -> tuple[dict, float]:
+    data = pytesseract.image_to_data(
+        image,
+        lang="eng",
+        config=f"--psm {page_segmentation_mode}",
+        output_type=pytesseract.Output.DICT,
+    )
+    lines = {}
+    confidences = []
+    for index, value in enumerate(data["text"]):
+        word = value.strip()
+        if not word:
+            continue
+        key = (
+            data["page_num"][index],
+            data["block_num"][index],
+            data["par_num"][index],
+            data["line_num"][index],
+        )
+        lines.setdefault(key, []).append(word)
+        try:
+            confidence = float(data["conf"][index])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if confidence >= 0:
+            confidences.append(confidence)
+
+    text = "\n".join(" ".join(lines[key]) for key in sorted(lines))
+    mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    return parse_national_id_text(text), mean_confidence
+
+
 def _read_pcn_from_image(image: np.ndarray, pytesseract) -> str | None:
     data = pytesseract.image_to_data(
         image,
@@ -324,23 +360,31 @@ def extract_id_fields(image: np.ndarray) -> dict:
     prepared = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )[1]
-    text_11 = pytesseract.image_to_string(prepared, lang="eng", config="--psm 11")
-    parsed = parse_national_id_text(text_11)
-    if not parsed["passed"]:
-        text_6 = pytesseract.image_to_string(prepared, lang="eng", config="--psm 6")
-        fallback = parse_national_id_text(text_6)
-        for field in ("full_name", "date_of_birth", "address", "id_number"):
+    candidates = [
+        _read_ocr_candidate(candidate_image, pytesseract, page_segmentation_mode)
+        for candidate_image in (prepared, gray)
+        for page_segmentation_mode in (11, 6)
+    ]
+    candidates.sort(
+        key=lambda candidate: (
+            sum(bool(candidate[0]["fields"].get(field)) for field in REQUIRED_FIELDS),
+            candidate[1],
+        ),
+        reverse=True,
+    )
+    parsed = candidates[0][0]
+    for fallback, _ in candidates[1:]:
+        for field in REQUIRED_FIELDS:
             if not parsed["fields"].get(field) and fallback["fields"].get(field):
                 parsed["fields"][field] = fallback["fields"][field]
+
     missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
     parsed["issues"] = quality_issues + [
         f"Could not read {field.replace('_', ' ')}. Retake the ID photo or check the field."
         for field in missing
     ]
     parsed["passed"] = not missing
-    pcn = None
-    if not parsed["fields"].get("id_number"):
-        pcn = _read_pcn_from_image(prepared, pytesseract)
+    pcn = _read_pcn_from_image(prepared, pytesseract)
     if pcn:
         parsed["fields"]["id_number"] = pcn
         missing = [field for field in REQUIRED_FIELDS if not parsed["fields"].get(field)]
