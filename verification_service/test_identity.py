@@ -146,32 +146,64 @@ class NationalIdParserTests(unittest.TestCase):
 
         self.assertEqual(decoded.shape[:2], (1800, 2400))
 
-    def test_complete_primary_ocr_skips_fallback_and_pcn_passes(self):
+    def test_ocr_selects_complete_candidate_with_the_highest_confidence(self):
         image = np.full((800, 1200, 3), 255, dtype=np.uint8)
         quality_warning = "The image looks blurry. Retake it with the ID in focus."
+        complete_text = (
+            "FULL NAME: SAMPLE PERSON\n"
+            "DATE OF BIRTH: 2000-01-02\n"
+            "ADDRESS: SAMPLE STREET, LIPA CITY\n"
+            "PCN: 1254-5678-9012-3456"
+        )
+        lower_confidence_text = complete_text.replace("SAMPLE PERSON", "WRONG PERSON")
+
+        def make_data(text, confidence):
+            lines = text.splitlines()
+            return {
+                "text": lines,
+                "conf": [str(confidence)] * len(lines),
+                "page_num": [1] * len(lines),
+                "block_num": [1] * len(lines),
+                "par_num": [1] * len(lines),
+                "line_num": list(range(1, len(lines) + 1)),
+            }
+
         pytesseract = SimpleNamespace(
-            image_to_string=Mock(return_value=(
-                "FULL NAME: SAMPLE PERSON\n"
-                "DATE OF BIRTH: 2000-01-02\n"
-                "ADDRESS: SAMPLE STREET, LIPA CITY\n"
-                "PCN: 1234-5678-9012-3456"
-            ))
+            Output=SimpleNamespace(DICT=object()),
+            image_to_data=Mock(side_effect=[
+                make_data(lower_confidence_text, 50),
+                make_data(complete_text, 90),
+                make_data("FULL NAME: PARTIAL PERSON", 99),
+                make_data("FULL NAME: PARTIAL PERSON", 99),
+            ]),
         )
         with patch.dict(sys.modules, {"pytesseract": pytesseract}):
             with patch("identity.configure_tesseract"):
                 with patch("identity.image_quality_issues", return_value=[quality_warning]):
                     with patch("identity._read_pcn_from_image") as read_pcn:
+                        read_pcn.return_value = "1234567890123456"
                         result = extract_id_fields(image)
 
         self.assertTrue(result["passed"])
         self.assertIn(quality_warning, result["issues"])
-        pytesseract.image_to_string.assert_called_once()
-        read_pcn.assert_not_called()
+        self.assertEqual(result["fields"]["full_name"], "SAMPLE PERSON")
+        self.assertEqual(result["fields"]["id_number"], "1234567890123456")
+        self.assertEqual(pytesseract.image_to_data.call_count, 4)
+        read_pcn.assert_called_once()
 
     def test_quality_warning_does_not_discard_partially_read_fields(self):
         image = np.full((800, 1200, 3), 255, dtype=np.uint8)
+        lines = ["FULL NAME: SAMPLE PERSON"]
         pytesseract = SimpleNamespace(
-            image_to_string=Mock(return_value="FULL NAME: SAMPLE PERSON")
+            Output=SimpleNamespace(DICT=object()),
+            image_to_data=Mock(return_value={
+                "text": lines,
+                "conf": ["90"],
+                "page_num": [1],
+                "block_num": [1],
+                "par_num": [1],
+                "line_num": [1],
+            }),
         )
         quality_warning = "The image looks blurry. Retake it with the ID in focus."
         with patch.dict(sys.modules, {"pytesseract": pytesseract}):
