@@ -485,10 +485,16 @@ function AppContent() {
       setRole('guest');
       setPage(roleConfig.guest.initialPage);
     }} onLogin={async (account) => {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: account.email, password: account.password });
-      if (error) throw new Error('Email or password is incorrect.');
-      const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-      if (profileError) throw profileError;
+      const result = await requestPublicApi('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(account),
+      });
+      if (!result?.session?.access_token || !result.session.refresh_token || !result.profile?.id) {
+        throw new Error('The login service returned an incomplete response. Try again.');
+      }
+      const { error } = await supabase.auth.setSession(result.session);
+      if (error) throw error;
+      const profile = result.profile;
       if (!profile || !roleConfig[profile.role]) throw new Error('Your account profile is incomplete. Contact an administrator.');
       if (profile.is_active === false) throw new Error('This account is inactive. Contact a head administrator.');
       const signedIn = { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, contactNumber: profile.contact_number || '', address: profile.address || '', customerCode: profile.customer_code, rewardPoints: profile.reward_points || 0, branchId: profile.branch_id, guestExpiresAt: profile.guest_expires_at };

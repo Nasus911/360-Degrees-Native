@@ -65,11 +65,10 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
-# Specifies an ordered list of seed files to load during db reset.
-# Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# The baseline migration inserts conflict-safe demo branches, products, and inventory.
+# Do not seed test users; create those through local Auth.
+enabled = false
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -219,7 +218,7 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+enabled = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -257,7 +256,7 @@ otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+enabled = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
@@ -388,7 +387,8 @@ deno_version = 2
 # secret_key = "env(SECRET_VALUE)"
 
 [analytics]
-enabled = true
+# Local app testing does not need analytics; this also avoids the Docker-host log collector.
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"
